@@ -1,291 +1,301 @@
 <!DOCTYPE html>
-
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mermaid図エディタ</title>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <title>Mermaid図エディタ - PNG/SVGエクスポート対応</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        window.mermaid = mermaid;
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
-```
-    body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: #f5f5f5;
-        min-height: 100vh;
-        color: #333;
-    }
-    
-    .header {
-        background: #fff;
-        border-bottom: 1px solid #ddd;
-        padding: 12px 24px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .header h1 {
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: #222;
-    }
-    
-    .header-right {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        font-size: 0.8rem;
-        color: #888;
-    }
-    
-    .auto-save {
-        opacity: 0;
-        transition: opacity 0.2s;
-    }
-    .auto-save.show { opacity: 1; }
-    
-    .shortcut {
-        font-family: monospace;
-        background: #f0f0f0;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 0.75rem;
-    }
-    
-    .main {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        height: calc(100vh - 49px);
-    }
-    
-    .editor-section {
-        display: flex;
-        flex-direction: column;
-        border-right: 1px solid #ddd;
-        background: #fff;
-    }
-    
-    .preview-section {
-        display: flex;
-        flex-direction: column;
-        background: #fafafa;
-    }
-    
-    .toolbar {
-        padding: 10px 16px;
-        border-bottom: 1px solid #eee;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #fff;
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-    
-    .toolbar-label {
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: #555;
-    }
-    
-    .toolbar-actions {
-        display: flex;
-        gap: 6px;
-    }
-    
-    .btn {
-        padding: 6px 12px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        background: #fff;
-        font-size: 0.8rem;
-        cursor: pointer;
-        transition: background 0.15s, border-color 0.15s;
-        color: #333;
-    }
-    
-    .btn:hover {
-        background: #f5f5f5;
-        border-color: #999;
-    }
-    
-    .btn:active {
-        background: #eee;
-    }
-    
-    .btn-primary {
-        background: #2563eb;
-        border-color: #2563eb;
-        color: #fff;
-    }
-    
-    .btn-primary:hover {
-        background: #1d4ed8;
-        border-color: #1d4ed8;
-    }
-    
-    .templates {
-        padding: 10px 16px;
-        border-bottom: 1px solid #eee;
-        background: #fafafa;
-    }
-    
-    .templates-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-    }
-    
-    .template-btn {
-        padding: 4px 10px;
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.75rem;
-        color: #555;
-        transition: border-color 0.15s, color 0.15s;
-    }
-    
-    .template-btn:hover {
-        border-color: #2563eb;
-        color: #2563eb;
-    }
-    
-    textarea {
-        flex: 1;
-        padding: 16px;
-        border: none;
-        font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
-        font-size: 14px;
-        line-height: 1.5;
-        resize: none;
-        outline: none;
-        background: #fff;
-        color: #333;
-    }
-    
-    textarea::placeholder {
-        color: #aaa;
-    }
-    
-    .preview-toolbar {
-        background: #fafafa;
-    }
-    
-    .zoom-group {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-    }
-    
-    .zoom-btn {
-        width: 28px;
-        height: 28px;
-        border: 1px solid #ccc;
-        background: #fff;
-        cursor: pointer;
-        font-size: 1rem;
-        border-radius: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #555;
-    }
-    
-    .zoom-btn:hover {
-        background: #f5f5f5;
-        border-color: #999;
-    }
-    
-    .zoom-level {
-        font-size: 0.75rem;
-        color: #888;
-        min-width: 40px;
-        text-align: center;
-    }
-    
-    .message {
-        padding: 8px 16px;
-        font-size: 0.8rem;
-        display: none;
-    }
-    
-    .message.error {
-        background: #fef2f2;
-        color: #b91c1c;
-        border-bottom: 1px solid #fecaca;
-    }
-    
-    .message.success {
-        background: #f0fdf4;
-        color: #15803d;
-        border-bottom: 1px solid #bbf7d0;
-    }
-    
-    .message.show { display: block; }
-    
-    .preview-area {
-        flex: 1;
-        padding: 20px;
-        overflow: auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    #mermaidOutput {
-        background: #fff;
-        border: 1px solid #e5e5e5;
-        border-radius: 6px;
-        padding: 24px;
-        min-width: 200px;
-        min-height: 200px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    #mermaidOutput svg {
-        max-width: 100%;
-        height: auto;
-    }
-    
-    .empty {
-        color: #999;
-        font-size: 0.9rem;
-    }
-    
-    .loading {
-        display: none;
-        color: #888;
-        font-size: 0.85rem;
-    }
-    
-    .loading.show { display: block; }
-    
-    @media (max-width: 900px) {
-        .main {
-            grid-template-columns: 1fr;
-            height: auto;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            color: #333;
         }
-        .editor-section {
-            border-right: none;
+
+        .header {
+            background: #fff;
             border-bottom: 1px solid #ddd;
-            min-height: 40vh;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-        .preview-section {
-            min-height: 40vh;
+
+        .header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #222;
         }
+
         .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .auto-save {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .auto-save.show { opacity: 1; }
+
+        .shortcut {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        .main {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            height: calc(100vh - 49px);
+        }
+
+        .editor-section {
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #ddd;
+            background: #fff;
+        }
+
+        .preview-section {
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+        }
+
+        .toolbar {
+            padding: 10px 16px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fff;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .toolbar-label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .toolbar-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #fff;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+            color: #333;
+        }
+
+        .btn:hover {
+            background: #f5f5f5;
+            border-color: #999;
+        }
+
+        .btn:active {
+            background: #eee;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+            border-color: #1d4ed8;
+        }
+
+        .templates {
+            padding: 10px 16px;
+            border-bottom: 1px solid #eee;
+            background: #fafafa;
+        }
+
+        .templates-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .template-btn {
+            padding: 4px 10px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            color: #555;
+            transition: border-color 0.15s, color 0.15s;
+        }
+
+        .template-btn:hover {
+            border-color: #2563eb;
+            color: #2563eb;
+        }
+
+        textarea {
+            flex: 1;
+            padding: 16px;
+            border: none;
+            font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+            background: #fff;
+            color: #333;
+        }
+
+        textarea::placeholder {
+            color: #aaa;
+        }
+
+        .preview-toolbar {
+            background: #fafafa;
+        }
+
+        .zoom-group {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .zoom-btn {
+            width: 28px;
+            height: 28px;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+            font-size: 1rem;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #555;
+        }
+
+        .zoom-btn:hover {
+            background: #f5f5f5;
+            border-color: #999;
+        }
+
+        .zoom-level {
+            font-size: 0.75rem;
+            color: #888;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .message {
+            padding: 8px 16px;
+            font-size: 0.8rem;
             display: none;
         }
-    }
-</style>
-```
 
+        .message.error {
+            background: #fef2f2;
+            color: #b91c1c;
+            border-bottom: 1px solid #fecaca;
+        }
+
+        .message.success {
+            background: #f0fdf4;
+            color: #15803d;
+            border-bottom: 1px solid #bbf7d0;
+        }
+
+        .message.warning {
+            background: #fffbeb;
+            color: #d97706;
+            border-bottom: 1px solid #fde68a;
+        }
+
+        .message.show { display: block; }
+
+        .preview-area {
+            flex: 1;
+            padding: 20px;
+            overflow: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #mermaidOutput {
+            background: #fff;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            padding: 24px;
+            min-width: 200px;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #mermaidOutput svg {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .empty {
+            color: #999;
+            font-size: 0.9rem;
+        }
+
+        .loading {
+            display: none;
+            color: #888;
+            font-size: 0.85rem;
+        }
+
+        .loading.show { display: block; }
+
+        @media (max-width: 900px) {
+            .main {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            .editor-section {
+                border-right: none;
+                border-bottom: 1px solid #ddd;
+                min-height: 40vh;
+            }
+            .preview-section {
+                min-height: 40vh;
+            }
+            .header-right {
+                display: none;
+            }
+        }
+    </style>
 </head>
 <body>
     <header class="header">
@@ -296,264 +306,614 @@
         </div>
     </header>
 
-```
-<main class="main">
-    <section class="editor-section">
-        <div class="toolbar">
-            <span class="toolbar-label">コード</span>
-            <div class="toolbar-actions">
-                <button class="btn btn-primary" id="renderBtn">実行</button>
-                <button class="btn" id="clearBtn">クリア</button>
-            </div>
-        </div>
-        <div class="templates">
-            <div class="templates-row" id="templates"></div>
-        </div>
-        <textarea id="code" placeholder="Mermaidコードを入力..."></textarea>
-    </section>
-    
-    <section class="preview-section">
-        <div class="toolbar preview-toolbar">
-            <span class="toolbar-label">プレビュー</span>
-            <div class="toolbar-actions">
-                <div class="zoom-group">
-                    <button class="zoom-btn" id="zoomOut">−</button>
-                    <span class="zoom-level" id="zoomLevel">100%</span>
-                    <button class="zoom-btn" id="zoomIn">+</button>
-                    <button class="zoom-btn" id="zoomReset">↺</button>
+    <main class="main">
+        <section class="editor-section">
+            <div class="toolbar">
+                <span class="toolbar-label">コード</span>
+                <div class="toolbar-actions">
+                    <button class="btn btn-primary" id="renderBtn">実行</button>
+                    <button class="btn" id="clearBtn">クリア</button>
                 </div>
-                <button class="btn" id="svgBtn">SVG保存</button>
-                <button class="btn" id="pngBtn">PNG保存</button>
             </div>
-        </div>
-        <div class="message error" id="error"></div>
-        <div class="message success" id="success"></div>
-        <div class="preview-area">
-            <div class="loading" id="loading">読み込み中...</div>
-            <div id="mermaidOutput"></div>
-        </div>
-    </section>
-</main>
+            <div class="templates">
+                <div class="templates-row" id="templates"></div>
+            </div>
+            <textarea id="code" placeholder="Mermaidコードを入力..."></textarea>
+        </section>
 
-<script>
-(() => {
-    'use strict';
+        <section class="preview-section">
+            <div class="toolbar preview-toolbar">
+                <span class="toolbar-label">プレビュー</span>
+                <div class="toolbar-actions">
+                    <div class="zoom-group">
+                        <button class="zoom-btn" id="zoomOut">−</button>
+                        <span class="zoom-level" id="zoomLevel">100%</span>
+                        <button class="zoom-btn" id="zoomIn">+</button>
+                        <button class="zoom-btn" id="zoomReset">↺</button>
+                    </div>
+                    <button class="btn" id="svgBtn">SVG保存</button>
+                    <button class="btn" id="pngBtn">PNG保存</button>
+                </div>
+            </div>
+            <div class="message error" id="error"></div>
+            <div class="message success" id="success"></div>
+            <div class="message warning" id="warning"></div>
+            <div class="preview-area">
+                <div class="loading" id="loading">読み込み中...</div>
+                <div id="mermaidOutput"></div>
+            </div>
+        </section>
+    </main>
 
-    const TEMPLATES = {
-        flowchart: ['フローチャート', `graph TD
-A[開始] --> B{条件分岐}
-B -->|Yes| C[処理A]
-B -->|No| D[処理B]
-C --> E[終了]
-D --> E`],
-        sequence: ['シーケンス図', `sequenceDiagram
-participant U as ユーザー
-participant S as システム
-participant D as DB
-U->>S: リクエスト
-S->>D: クエリ
-D-->>S: 結果
-S-->>U: レスポンス`],
-        class: ['クラス図', `classDiagram
-class Animal {
-    +String name
-    +eat()
-}
-class Dog {
-    +bark()
-}
-Animal <|-- Dog`],
-        state: ['状態遷移図', `stateDiagram-v2
-[*] --> 待機
-待機 --> 処理中: 開始
-処理中 --> 完了: 成功
-処理中 --> エラー: 失敗
-完了 --> [*]`],
-        er: ['ER図', `erDiagram
-CUSTOMER ||--o{ ORDER : places
-ORDER ||--|{ ITEM : contains
-CUSTOMER {
-    string name
-    string email
-}`],
-        gantt: ['ガント', `gantt
-title スケジュール
-dateFormat YYYY-MM-DD
-section 開発
-    設計 :a1, 2024-01-01, 14d
-    実装 :a2, after a1, 21d`],
-        pie: ['円グラフ', `pie title 比率
-"A" : 40
-"B" : 35
-"C" : 25`],
-        git: ['Git', `gitGraph
-commit
-branch dev
-commit
-checkout main
-merge dev`]
-    };
+    <script type="module">
+        (async () => {
+            'use strict';
 
-    const $ = id => document.getElementById(id);
-    const code = $('code');
-    const output = $('mermaidOutput');
-    const error = $('error');
-    const success = $('success');
-    const loading = $('loading');
-    const zoomLevel = $('zoomLevel');
-    const autoSave = $('autoSave');
+            // Mermaidの初期化を待つ
+            while (!window.mermaid) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
 
-    let zoom = 1;
-    let rendering = false;
-    let saveTimer;
+            const TEMPLATES = {
+                flowchart: ['フローチャート', `graph TD
+    A[開始] --> B{条件分岐}
+    B -->|Yes| C[処理A]
+    B -->|No| D[処理B]
+    C --> E[終了]
+    D --> E`],
+                sequence: ['シーケンス図', `sequenceDiagram
+    participant U as ユーザー
+    participant S as システム
+    participant D as DB
+    U->>S: リクエスト
+    S->>D: クエリ
+    D-->>S: 結果
+    S-->>U: レスポンス`],
+                class: ['クラス図', `classDiagram
+    class Animal {
+        +String name
+        +int age
+        +eat()
+        +sleep()
+    }
+    class Dog {
+        +String breed
+        +bark()
+    }
+    class Cat {
+        +meow()
+    }
+    Animal <|-- Dog
+    Animal <|-- Cat`],
+                state: ['状態遷移図', `stateDiagram-v2
+    [*] --> 待機
+    待機 --> 処理中: 開始
+    処理中 --> 完了: 成功
+    処理中 --> エラー: 失敗
+    エラー --> 待機: リトライ
+    完了 --> [*]`],
+                er: ['ER図', `erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE-ITEM : contains
+    CUSTOMER {
+        string name
+        string email
+        int age
+    }
+    ORDER {
+        int orderNumber
+        date orderDate
+    }
+    LINE-ITEM {
+        string productCode
+        int quantity
+        float price
+    }`],
+                gantt: ['ガント図', `gantt
+    title プロジェクトスケジュール
+    dateFormat YYYY-MM-DD
+    section 設計
+        要件定義    :a1, 2024-01-01, 14d
+        基本設計    :a2, after a1, 10d
+    section 開発
+        実装        :a3, after a2, 21d
+        テスト      :a4, after a3, 14d`],
+                pie: ['円グラフ', `pie title 売上比率
+    "商品A" : 40
+    "商品B" : 30
+    "商品C" : 20
+    "その他" : 10`],
+                git: ['Gitグラフ', `gitGraph
+    commit
+    branch develop
+    checkout develop
+    commit
+    commit
+    checkout main
+    merge develop
+    commit`],
+                journey: ['ユーザージャーニー', `journey
+    title ユーザーの1日
+    section 朝
+        起床: 3: ユーザー
+        朝食: 5: ユーザー
+    section 昼
+        仕事: 3: ユーザー
+        昼食: 4: ユーザー
+    section 夜
+        帰宅: 3: ユーザー
+        夕食: 5: ユーザー`],
+                mindmap: ['マインドマップ', `mindmap
+  root((アイデア))
+    企画
+      要件
+      設計
+    開発
+      実装
+      テスト
+    運用
+      リリース
+      保守`],
+                timeline: ['タイムライン', `timeline
+    title 会社の歴史
+    2020 : 創業
+    2021 : 製品リリース
+    2022 : 海外進出
+    2023 : IPO
+    2024 : 新事業開始`],
+                quadrant: ['象限図', `quadrantChart
+    title リスク評価マトリクス
+    x-axis 低影響 --> 高影響
+    y-axis 低確率 --> 高確率
+    quadrant-1 監視
+    quadrant-2 対策必須
+    quadrant-3 無視可
+    quadrant-4 注意
+    項目A: [0.8, 0.7]
+    項目B: [0.3, 0.2]
+    項目C: [0.6, 0.3]`]
+            };
 
-    mermaid.initialize({
-        startOnLoad: false,
-        theme: 'neutral',
-        securityLevel: 'loose',
-        fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif'
-    });
+            const $ = id => document.getElementById(id);
+            const code = $('code');
+            const output = $('mermaidOutput');
+            const error = $('error');
+            const success = $('success');
+            const warning = $('warning');
+            const loading = $('loading');
+            const zoomLevel = $('zoomLevel');
+            const autoSave = $('autoSave');
+            const svgBtn = $('svgBtn');
+            const pngBtn = $('pngBtn');
 
-    // テンプレートボタン生成
-    const tpl = $('templates');
-    Object.entries(TEMPLATES).forEach(([k, [label]]) => {
-        const btn = document.createElement('button');
-        btn.className = 'template-btn';
-        btn.textContent = label;
-        btn.onclick = () => { code.value = TEMPLATES[k][1]; save(); render(); };
-        tpl.appendChild(btn);
-    });
+            let zoom = 1;
+            let rendering = false;
+            let saveTimer;
+            let renderCount = 0;
 
-    const msg = (type, text) => {
-        const el = type === 'error' ? error : success;
-        (type === 'error' ? success : error).classList.remove('show');
-        el.textContent = text;
-        el.classList.add('show');
-        setTimeout(() => el.classList.remove('show'), type === 'error' ? 4000 : 2000);
-    };
-
-    const save = () => {
-        localStorage.setItem('mermaid_code', code.value);
-        autoSave.classList.add('show');
-        clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => autoSave.classList.remove('show'), 1500);
-    };
-
-    const render = async () => {
-        if (rendering) return;
-        const src = code.value.trim();
-        error.classList.remove('show');
-        success.classList.remove('show');
-        
-        if (!src) {
-            output.innerHTML = '<span class="empty">コードを入力してください</span>';
-            return;
-        }
-
-        rendering = true;
-        loading.classList.add('show');
-        output.innerHTML = '';
-
-        try {
-            const { svg } = await mermaid.render('m' + Date.now(), src);
-            output.innerHTML = svg;
-            applyZoom();
-            msg('success', '完了');
-        } catch (e) {
-            msg('error', e.message || 'エラー');
-            output.innerHTML = '<span class="empty">表示できません</span>';
-        } finally {
-            loading.classList.remove('show');
-            rendering = false;
-        }
-    };
-
-    const applyZoom = () => {
-        zoomLevel.textContent = Math.round(zoom * 100) + '%';
-        const svg = output.querySelector('svg');
-        if (svg) svg.style.transform = `scale(${zoom})`;
-    };
-
-    const download = (blob, name) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = name;
-        a.click();
-        URL.revokeObjectURL(url);
-    };
-
-    $('renderBtn').onclick = render;
-    $('clearBtn').onclick = () => {
-        if (confirm('クリアしますか？')) {
-            code.value = '';
-            output.innerHTML = '<span class="empty">コードを入力してください</span>';
-            localStorage.removeItem('mermaid_code');
-        }
-    };
-
-    $('zoomIn').onclick = () => { zoom = Math.min(3, zoom + 0.1); applyZoom(); };
-    $('zoomOut').onclick = () => { zoom = Math.max(0.2, zoom - 0.1); applyZoom(); };
-    $('zoomReset').onclick = () => { zoom = 1; applyZoom(); };
-
-    $('svgBtn').onclick = () => {
-        const svg = output.querySelector('svg');
-        if (!svg) return msg('error', '図がありません');
-        const clone = svg.cloneNode(true);
-        clone.removeAttribute('style');
-        download(new Blob([clone.outerHTML], { type: 'image/svg+xml' }), `diagram-${Date.now()}.svg`);
-        msg('success', 'SVG保存完了');
-    };
-
-    $('pngBtn').onclick = () => {
-        const svg = output.querySelector('svg');
-        if (!svg) return msg('error', '図がありません');
-        const clone = svg.cloneNode(true);
-        clone.removeAttribute('style');
-        const data = new XMLSerializer().serializeToString(clone);
-        const rect = svg.getBoundingClientRect();
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const scale = 4;
-        canvas.width = rect.width * scale;
-        canvas.height = rect.height * scale;
-        const img = new Image();
-        img.onload = () => {
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            canvas.toBlob(b => {
-                download(b, `diagram-${Date.now()}.png`);
-                msg('success', 'PNG保存完了');
+            // Mermaidの詳細な設定
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'default',
+                themeVariables: {
+                    fontSize: '16px',
+                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                },
+                logLevel: 'error',
+                securityLevel: 'strict',
+                deterministicIds: true,
+                deterministicIDSeed: 'mermaid-editor',
+                flowchart: {
+                    useMaxWidth: true,
+                    htmlLabels: true,
+                    curve: 'basis'
+                },
+                sequence: {
+                    useMaxWidth: true,
+                    wrap: true,
+                    actorMargin: 50
+                },
+                gantt: {
+                    useMaxWidth: true,
+                    titleTopMargin: 25,
+                    barHeight: 20,
+                    barGap: 4,
+                    topPadding: 50,
+                    leftPadding: 75,
+                    gridLineStartPadding: 35,
+                    fontSize: 11
+                },
+                class: {
+                    useMaxWidth: true
+                },
+                state: {
+                    useMaxWidth: true
+                },
+                er: {
+                    useMaxWidth: true
+                },
+                journey: {
+                    useMaxWidth: true
+                },
+                timeline: {
+                    useMaxWidth: true
+                },
+                mindmap: {
+                    useMaxWidth: true
+                }
             });
-        };
-        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(data)));
-    };
 
-    code.onkeydown = e => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); render(); }
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            const s = code.selectionStart;
-            code.value = code.value.slice(0, s) + '    ' + code.value.slice(code.selectionEnd);
-            code.selectionStart = code.selectionEnd = s + 4;
-        }
-    };
+            // テンプレートボタン生成
+            const tpl = $('templates');
+            Object.entries(TEMPLATES).forEach(([k, [label]]) => {
+                const btn = document.createElement('button');
+                btn.className = 'template-btn';
+                btn.textContent = label;
+                btn.onclick = () => {
+                    code.value = TEMPLATES[k][1];
+                    save();
+                    render();
+                };
+                tpl.appendChild(btn);
+            });
 
-    let debounce;
-    code.oninput = () => {
-        save();
-        clearTimeout(debounce);
-        debounce = setTimeout(render, 600);
-    };
+            const msg = (type, text) => {
+                const elements = { error, success, warning };
+                Object.values(elements).forEach(el => el.classList.remove('show'));
+                const el = elements[type];
+                if (el) {
+                    el.textContent = text;
+                    el.classList.add('show');
+                    const duration = type === 'error' ? 5000 : type === 'warning' ? 3000 : 2000;
+                    setTimeout(() => el.classList.remove('show'), duration);
+                }
+            };
 
-    // 初期化
-    const saved = localStorage.getItem('mermaid_code');
-    code.value = saved || TEMPLATES.flowchart[1];
-    render();
-})();
-</script>
-```
+            const save = () => {
+                try {
+                    localStorage.setItem('mermaid_code', code.value);
+                    autoSave.classList.add('show');
+                    clearTimeout(saveTimer);
+                    saveTimer = setTimeout(() => autoSave.classList.remove('show'), 1500);
+                } catch (e) {
+                    console.error('保存エラー:', e);
+                }
+            };
 
+            // コードのバリデーション
+            const validateCode = (src) => {
+                if (!src || !src.trim()) {
+                    return { valid: false, error: 'コードが空です' };
+                }
+
+                // 基本的な構文チェック
+                const lines = src.trim().split('\n');
+                const firstLine = lines[0].trim().toLowerCase();
+
+                const validTypes = [
+                    'graph', 'flowchart', 'sequencediagram', 'classdiagram',
+                    'statediagram', 'statediagram-v2', 'erdiagram', 'gantt',
+                    'pie', 'gitgraph', 'journey', 'mindmap', 'timeline',
+                    'quadrantchart', 'requirementdiagram', 'c4context'
+                ];
+
+                const isValidType = validTypes.some(type =>
+                    firstLine.startsWith(type) || firstLine.includes(type)
+                );
+
+                if (!isValidType) {
+                    return {
+                        valid: false,
+                        error: `無効なダイアグラムタイプです。有効なタイプ: ${validTypes.join(', ')}`
+                    };
+                }
+
+                // 括弧のバランスチェック
+                const openBrackets = (src.match(/[\[\{\(]/g) || []).length;
+                const closeBrackets = (src.match(/[\]\}\)]/g) || []).length;
+                if (openBrackets !== closeBrackets) {
+                    return {
+                        valid: false,
+                        error: '括弧のバランスが不正です'
+                    };
+                }
+
+                return { valid: true };
+            };
+
+            const render = async () => {
+                if (rendering) {
+                    msg('warning', 'レンダリング中です...');
+                    return;
+                }
+
+                const src = code.value.trim();
+                error.classList.remove('show');
+                success.classList.remove('show');
+                warning.classList.remove('show');
+
+                if (!src) {
+                    output.innerHTML = '<span class="empty">コードを入力してください</span>';
+                    svgBtn.disabled = true;
+                    pngBtn.disabled = true;
+                    return;
+                }
+
+                // バリデーション
+                const validation = validateCode(src);
+                if (!validation.valid) {
+                    msg('error', validation.error);
+                    output.innerHTML = '<span class="empty">エラー: ' + validation.error + '</span>';
+                    svgBtn.disabled = true;
+                    pngBtn.disabled = true;
+                    return;
+                }
+
+                rendering = true;
+                loading.classList.add('show');
+                output.innerHTML = '';
+                svgBtn.disabled = true;
+                pngBtn.disabled = true;
+
+                try {
+                    // ユニークIDを生成
+                    const id = `mermaid-${Date.now()}-${++renderCount}`;
+
+                    // Mermaidのレンダリング
+                    const { svg } = await mermaid.render(id, src);
+
+                    if (!svg) {
+                        throw new Error('SVGの生成に失敗しました');
+                    }
+
+                    // レンダリング成功
+                    output.innerHTML = svg;
+
+                    // SVGの調整
+                    const svgElement = output.querySelector('svg');
+                    if (svgElement) {
+                        // ViewBoxがない場合は追加
+                        if (!svgElement.hasAttribute('viewBox')) {
+                            const bbox = svgElement.getBBox();
+                            svgElement.setAttribute('viewBox', `0 0 ${bbox.width} ${bbox.height}`);
+                        }
+
+                        // 最大幅を設定
+                        svgElement.style.maxWidth = '100%';
+                        svgElement.style.height = 'auto';
+
+                        applyZoom();
+                        msg('success', 'レンダリング完了');
+                        svgBtn.disabled = false;
+                        pngBtn.disabled = false;
+                    } else {
+                        throw new Error('SVG要素が見つかりません');
+                    }
+                } catch (e) {
+                    console.error('レンダリングエラー:', e);
+
+                    // 詳細なエラーメッセージ
+                    let errorMsg = 'レンダリングエラー: ';
+                    if (e.message) {
+                        errorMsg += e.message;
+                    } else {
+                        errorMsg += '不明なエラーが発生しました';
+                    }
+
+                    // エラーの種類に応じたヒント
+                    if (e.message?.includes('syntax') || e.message?.includes('Parse')) {
+                        errorMsg += '\n構文エラーの可能性があります。コードを確認してください。';
+                    } else if (e.message?.includes('undefined')) {
+                        errorMsg += '\n未定義の要素があります。';
+                    }
+
+                    msg('error', errorMsg);
+                    output.innerHTML = '<span class="empty">表示できません<br><small>' +
+                        (e.message || 'エラー詳細なし') + '</small></span>';
+                    svgBtn.disabled = true;
+                    pngBtn.disabled = true;
+                } finally {
+                    loading.classList.remove('show');
+                    rendering = false;
+                }
+            };
+
+            const applyZoom = () => {
+                zoomLevel.textContent = Math.round(zoom * 100) + '%';
+                const svg = output.querySelector('svg');
+                if (svg) {
+                    svg.style.transform = `scale(${zoom})`;
+                    svg.style.transformOrigin = 'top left';
+                }
+            };
+
+            const download = (blob, name) => {
+                try {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = name;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    setTimeout(() => URL.revokeObjectURL(url), 100);
+                } catch (e) {
+                    msg('error', 'ダウンロードエラー: ' + e.message);
+                }
+            };
+
+            $('renderBtn').onclick = render;
+
+            $('clearBtn').onclick = () => {
+                if (confirm('コードをクリアしますか？')) {
+                    code.value = '';
+                    output.innerHTML = '<span class="empty">コードを入力してください</span>';
+                    localStorage.removeItem('mermaid_code');
+                    svgBtn.disabled = true;
+                    pngBtn.disabled = true;
+                }
+            };
+
+            $('zoomIn').onclick = () => {
+                zoom = Math.min(3, zoom + 0.1);
+                applyZoom();
+            };
+
+            $('zoomOut').onclick = () => {
+                zoom = Math.max(0.2, zoom - 0.1);
+                applyZoom();
+            };
+
+            $('zoomReset').onclick = () => {
+                zoom = 1;
+                applyZoom();
+            };
+
+            svgBtn.onclick = () => {
+                const svg = output.querySelector('svg');
+                if (!svg) {
+                    msg('error', '図がありません');
+                    return;
+                }
+
+                try {
+                    const clone = svg.cloneNode(true);
+                    clone.removeAttribute('style');
+
+                    // 名前空間の追加
+                    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+
+                    const svgData = clone.outerHTML;
+                    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                    download(blob, `mermaid-diagram-${Date.now()}.svg`);
+                    msg('success', 'SVG保存完了');
+                } catch (e) {
+                    msg('error', 'SVG保存エラー: ' + e.message);
+                }
+            };
+
+            pngBtn.onclick = async () => {
+                const svg = output.querySelector('svg');
+                if (!svg) {
+                    msg('error', '図がありません');
+                    return;
+                }
+
+                try {
+                    msg('warning', 'PNG生成中...');
+
+                    const clone = svg.cloneNode(true);
+                    clone.removeAttribute('style');
+                    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+
+                    // SVGのサイズを取得
+                    const bbox = svg.getBBox();
+                    const svgWidth = bbox.width || svg.clientWidth || 800;
+                    const svgHeight = bbox.height || svg.clientHeight || 600;
+
+                    // 高解像度用のスケール
+                    const scale = 3;
+
+                    // SVGデータをBase64エンコード
+                    const svgData = clone.outerHTML;
+                    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                    const url = URL.createObjectURL(svgBlob);
+
+                    // 画像として読み込み
+                    const img = new Image();
+
+                    const pngPromise = new Promise((resolve, reject) => {
+                        img.onload = () => {
+                            try {
+                                const canvas = document.createElement('canvas');
+                                canvas.width = svgWidth * scale;
+                                canvas.height = svgHeight * scale;
+
+                                const ctx = canvas.getContext('2d');
+
+                                // 背景を白に
+                                ctx.fillStyle = '#ffffff';
+                                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                                // SVGを描画
+                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                                // PNGに変換
+                                canvas.toBlob(
+                                    (blob) => {
+                                        if (blob) {
+                                            download(blob, `mermaid-diagram-${Date.now()}.png`);
+                                            msg('success', 'PNG保存完了');
+                                            resolve();
+                                        } else {
+                                            reject(new Error('PNG変換に失敗しました'));
+                                        }
+                                    },
+                                    'image/png',
+                                    1.0
+                                );
+                            } catch (e) {
+                                reject(e);
+                            } finally {
+                                URL.revokeObjectURL(url);
+                            }
+                        };
+
+                        img.onerror = () => {
+                            URL.revokeObjectURL(url);
+                            reject(new Error('画像の読み込みに失敗しました'));
+                        };
+                    });
+
+                    img.src = url;
+                    await pngPromise;
+
+                } catch (e) {
+                    console.error('PNG生成エラー:', e);
+                    msg('error', 'PNG保存エラー: ' + e.message);
+                }
+            };
+
+            code.onkeydown = e => {
+                // Ctrl+Enter で実行
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    render();
+                }
+
+                // Tabキーでインデント
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = code.selectionStart;
+                    const end = code.selectionEnd;
+                    code.value = code.value.substring(0, start) + '    ' + code.value.substring(end);
+                    code.selectionStart = code.selectionEnd = start + 4;
+                }
+            };
+
+            // 自動保存とデバウンスレンダリング
+            let debounceTimer;
+            code.oninput = () => {
+                save();
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(render, 800);
+            };
+
+            // 初期化
+            try {
+                const saved = localStorage.getItem('mermaid_code');
+                code.value = saved || TEMPLATES.flowchart[1];
+
+                // 初回レンダリングを少し遅延
+                setTimeout(render, 100);
+            } catch (e) {
+                console.error('初期化エラー:', e);
+                code.value = TEMPLATES.flowchart[1];
+                setTimeout(render, 100);
+            }
+        })();
+    </script>
 </body>
 </html>
