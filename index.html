@@ -491,22 +491,26 @@
             let saveTimer;
             let renderCount = 0;
 
-            // Mermaidの詳細な設定
+            // Mermaidの詳細な設定（v11.12.2最適化）
             mermaid.initialize({
                 startOnLoad: false,
                 theme: 'default',
                 themeVariables: {
-                    fontSize: '16px',
-                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                    fontSize: '16px'
                 },
-                logLevel: 'debug',
+                logLevel: 'error',
                 securityLevel: 'loose',
                 suppressErrorRendering: false,
                 deterministicIds: false,
+                maxTextSize: 100000,
+                maxEdges: 2000,
                 flowchart: {
                     useMaxWidth: true,
-                    htmlLabels: true,
-                    curve: 'basis'
+                    htmlLabels: false,
+                    curve: 'basis',
+                    padding: 15,
+                    nodeSpacing: 50,
+                    rankSpacing: 50
                 },
                 sequence: {
                     useMaxWidth: true,
@@ -519,9 +523,7 @@
                     barHeight: 20,
                     barGap: 4,
                     topPadding: 50,
-                    leftPadding: 75,
-                    gridLineStartPadding: 35,
-                    fontSize: 11
+                    leftPadding: 75
                 },
                 class: {
                     useMaxWidth: true
@@ -653,11 +655,35 @@
 
                     console.log('レンダリング開始:', { id, codeLength: src.length });
 
-                    // Mermaidのレンダリング
-                    const { svg } = await mermaid.render(id, src);
+                    // コードのクリーンアップ（コメント行を保持、空行のみ削除）
+                    const cleanedSrc = src
+                        .split('\n')
+                        .map(line => line.trimEnd()) // 行末の空白のみ削除
+                        .filter(line => line.length > 0 || line.trim().startsWith('%%')) // 空行を削除、コメントは保持
+                        .join('\n');
+
+                    console.log('クリーンアップ後のコード:', cleanedSrc.substring(0, 200) + '...');
+
+                    // Mermaidのレンダリング（リトライ付き）
+                    let svg;
+                    let lastError;
+
+                    try {
+                        const result = await mermaid.render(id, cleanedSrc);
+                        svg = result.svg;
+                    } catch (firstError) {
+                        console.warn('初回レンダリング失敗、元のコードで再試行:', firstError);
+                        // クリーンアップが原因の場合、元のコードで再試行
+                        try {
+                            const result = await mermaid.render(id + '-retry', src);
+                            svg = result.svg;
+                        } catch (secondError) {
+                            lastError = secondError;
+                        }
+                    }
 
                     if (!svg) {
-                        throw new Error('SVGの生成に失敗しました');
+                        throw lastError || new Error('SVGの生成に失敗しました');
                     }
 
                     // レンダリング成功
@@ -699,31 +725,41 @@
                     // 詳細なエラーメッセージ
                     let errorMsg = '';
                     let errorDetail = '';
+                    let errorHint = '';
 
                     if (e.message) {
                         errorMsg = e.message;
 
+                        // エラー行を抽出（可能な場合）
+                        const lineMatch = e.message.match(/line (\d+)/i) || e.message.match(/at (\d+)/);
+                        if (lineMatch) {
+                            errorHint = `\n行 ${lineMatch[1]} 付近を確認してください。`;
+                        }
+
                         // Mermaid v11の特定エラーに対応
                         if (e.message.includes('Syntax error')) {
-                            errorDetail = '構文エラーが発生しました。コードの書き方を確認してください。';
+                            errorDetail = '構文エラー: 矢印(-->)、ノード定義、ラベルの書き方を確認してください。';
                         } else if (e.message.includes('Parse error')) {
-                            errorDetail = 'パースエラー: コードの構文を見直してください。';
+                            errorDetail = 'パースエラー: グラフタイプ宣言、ノード間の接続を確認してください。';
                         } else if (e.message.includes('Lexical error')) {
-                            errorDetail = '字句解析エラー: 不正な文字や記号が含まれています。';
-                        } else if (e.message.includes('undefined')) {
-                            errorDetail = '未定義の要素があります。ノード名やラベルを確認してください。';
+                            errorDetail = '字句エラー: 使用できない記号や特殊文字が含まれています。';
+                        } else if (e.message.includes('undefined') || e.message.includes('Cannot read')) {
+                            errorDetail = '未定義エラー: 存在しないノードへの参照があります。';
                         } else if (e.message.includes('security')) {
-                            errorDetail = 'セキュリティエラー: HTMLタグやスクリプトが含まれている可能性があります。';
+                            errorDetail = 'セキュリティエラー: HTMLタグが含まれています。テキストのみ使用してください。';
+                        } else if (e.message.includes('Expecting')) {
+                            errorDetail = '構文エラー: 期待される要素が見つかりません。';
                         } else {
-                            errorDetail = 'コードの形式を確認してください。';
+                            errorDetail = 'コードの形式を確認してください。コメント行(%%）も確認してみてください。';
                         }
                     } else {
                         errorMsg = '不明なエラーが発生しました';
-                        errorDetail = 'コンソールを確認してください。';
+                        errorDetail = 'ブラウザのコンソール（F12）を開いて詳細を確認してください。';
                     }
 
-                    msg('error', `${errorMsg}\n${errorDetail}`);
-                    output.innerHTML = `<span class="empty">表示できません<br><small style="color:#999;margin-top:8px;display:block;">${errorMsg}</small></span>`;
+                    const fullErrorMsg = `${errorMsg}${errorHint}\n${errorDetail}`;
+                    msg('error', fullErrorMsg);
+                    output.innerHTML = `<span class="empty">表示できません<br><small style="color:#999;margin-top:8px;display:block;white-space:pre-wrap;">${errorMsg}${errorHint}</small></span>`;
                     svgBtn.disabled = true;
                     pngBtn.disabled = true;
                 } finally {
