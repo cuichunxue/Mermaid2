@@ -499,10 +499,10 @@
                     fontSize: '16px',
                     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
                 },
-                logLevel: 'error',
-                securityLevel: 'strict',
-                deterministicIds: true,
-                deterministicIDSeed: 'mermaid-editor',
+                logLevel: 'debug',
+                securityLevel: 'loose',
+                suppressErrorRendering: false,
+                deterministicIds: false,
                 flowchart: {
                     useMaxWidth: true,
                     htmlLabels: true,
@@ -580,13 +580,13 @@
                 }
             };
 
-            // コードのバリデーション
+            // コードのバリデーション（緩和版）
             const validateCode = (src) => {
                 if (!src || !src.trim()) {
                     return { valid: false, error: 'コードが空です' };
                 }
 
-                // 基本的な構文チェック
+                // 基本的な構文チェック（緩和）
                 const lines = src.trim().split('\n');
                 const firstLine = lines[0].trim().toLowerCase();
 
@@ -594,29 +594,21 @@
                     'graph', 'flowchart', 'sequencediagram', 'classdiagram',
                     'statediagram', 'statediagram-v2', 'erdiagram', 'gantt',
                     'pie', 'gitgraph', 'journey', 'mindmap', 'timeline',
-                    'quadrantchart', 'requirementdiagram', 'c4context'
+                    'quadrantchart', 'requirementdiagram', 'c4context', 'c4',
+                    'xychart', 'sankey', 'block', 'packet'
                 ];
 
                 const isValidType = validTypes.some(type =>
                     firstLine.startsWith(type) || firstLine.includes(type)
                 );
 
+                // ダイアグラムタイプのチェックを警告のみに
                 if (!isValidType) {
-                    return {
-                        valid: false,
-                        error: `無効なダイアグラムタイプです。有効なタイプ: ${validTypes.join(', ')}`
-                    };
+                    console.warn('認識できないダイアグラムタイプ:', firstLine);
+                    // バリデーションエラーにはせず、Mermaid自体に判断させる
                 }
 
-                // 括弧のバランスチェック
-                const openBrackets = (src.match(/[\[\{\(]/g) || []).length;
-                const closeBrackets = (src.match(/[\]\}\)]/g) || []).length;
-                if (openBrackets !== closeBrackets) {
-                    return {
-                        valid: false,
-                        error: '括弧のバランスが不正です'
-                    };
-                }
+                // 括弧のバランスチェックは削除（コメントやテキスト内の括弧で誤検知するため）
 
                 return { valid: true };
             };
@@ -659,6 +651,8 @@
                     // ユニークIDを生成
                     const id = `mermaid-${Date.now()}-${++renderCount}`;
 
+                    console.log('レンダリング開始:', { id, codeLength: src.length });
+
                     // Mermaidのレンダリング
                     const { svg } = await mermaid.render(id, src);
 
@@ -674,8 +668,14 @@
                     if (svgElement) {
                         // ViewBoxがない場合は追加
                         if (!svgElement.hasAttribute('viewBox')) {
-                            const bbox = svgElement.getBBox();
-                            svgElement.setAttribute('viewBox', `0 0 ${bbox.width} ${bbox.height}`);
+                            try {
+                                const bbox = svgElement.getBBox();
+                                if (bbox && bbox.width && bbox.height) {
+                                    svgElement.setAttribute('viewBox', `0 0 ${bbox.width} ${bbox.height}`);
+                                }
+                            } catch (bboxError) {
+                                console.warn('ViewBox設定エラー:', bboxError);
+                            }
                         }
 
                         // 最大幅を設定
@@ -690,26 +690,40 @@
                         throw new Error('SVG要素が見つかりません');
                     }
                 } catch (e) {
-                    console.error('レンダリングエラー:', e);
+                    console.error('レンダリングエラー詳細:', {
+                        message: e.message,
+                        stack: e.stack,
+                        error: e
+                    });
 
                     // 詳細なエラーメッセージ
-                    let errorMsg = 'レンダリングエラー: ';
+                    let errorMsg = '';
+                    let errorDetail = '';
+
                     if (e.message) {
-                        errorMsg += e.message;
+                        errorMsg = e.message;
+
+                        // Mermaid v11の特定エラーに対応
+                        if (e.message.includes('Syntax error')) {
+                            errorDetail = '構文エラーが発生しました。コードの書き方を確認してください。';
+                        } else if (e.message.includes('Parse error')) {
+                            errorDetail = 'パースエラー: コードの構文を見直してください。';
+                        } else if (e.message.includes('Lexical error')) {
+                            errorDetail = '字句解析エラー: 不正な文字や記号が含まれています。';
+                        } else if (e.message.includes('undefined')) {
+                            errorDetail = '未定義の要素があります。ノード名やラベルを確認してください。';
+                        } else if (e.message.includes('security')) {
+                            errorDetail = 'セキュリティエラー: HTMLタグやスクリプトが含まれている可能性があります。';
+                        } else {
+                            errorDetail = 'コードの形式を確認してください。';
+                        }
                     } else {
-                        errorMsg += '不明なエラーが発生しました';
+                        errorMsg = '不明なエラーが発生しました';
+                        errorDetail = 'コンソールを確認してください。';
                     }
 
-                    // エラーの種類に応じたヒント
-                    if (e.message?.includes('syntax') || e.message?.includes('Parse')) {
-                        errorMsg += '\n構文エラーの可能性があります。コードを確認してください。';
-                    } else if (e.message?.includes('undefined')) {
-                        errorMsg += '\n未定義の要素があります。';
-                    }
-
-                    msg('error', errorMsg);
-                    output.innerHTML = '<span class="empty">表示できません<br><small>' +
-                        (e.message || 'エラー詳細なし') + '</small></span>';
+                    msg('error', `${errorMsg}\n${errorDetail}`);
+                    output.innerHTML = `<span class="empty">表示できません<br><small style="color:#999;margin-top:8px;display:block;">${errorMsg}</small></span>`;
                     svgBtn.disabled = true;
                     pngBtn.disabled = true;
                 } finally {
