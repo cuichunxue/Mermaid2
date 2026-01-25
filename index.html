@@ -350,8 +350,15 @@
             'use strict';
 
             // Mermaidの初期化を待つ
-            while (!window.mermaid) {
+            let retryCount = 0;
+            while (!window.mermaid && retryCount < 100) {
                 await new Promise(resolve => setTimeout(resolve, 50));
+                retryCount++;
+            }
+
+            if (!window.mermaid) {
+                console.error('Mermaidの読み込みに失敗しました');
+                return;
             }
 
             const TEMPLATES = {
@@ -491,59 +498,75 @@
             let saveTimer;
             let renderCount = 0;
 
-            // Mermaidの詳細な設定（v11.12.2最適化）
-            mermaid.initialize({
-                startOnLoad: false,
-                theme: 'default',
-                themeVariables: {
-                    fontSize: '16px'
-                },
-                logLevel: 'error',
-                securityLevel: 'loose',
-                suppressErrorRendering: false,
-                deterministicIds: false,
-                maxTextSize: 100000,
-                maxEdges: 2000,
-                flowchart: {
-                    useMaxWidth: true,
-                    htmlLabels: false,
-                    curve: 'basis',
-                    padding: 15,
-                    nodeSpacing: 50,
-                    rankSpacing: 50
-                },
-                sequence: {
-                    useMaxWidth: true,
-                    wrap: true,
-                    actorMargin: 50
-                },
-                gantt: {
-                    useMaxWidth: true,
-                    titleTopMargin: 25,
-                    barHeight: 20,
-                    barGap: 4,
-                    topPadding: 50,
-                    leftPadding: 75
-                },
-                class: {
-                    useMaxWidth: true
-                },
-                state: {
-                    useMaxWidth: true
-                },
-                er: {
-                    useMaxWidth: true
-                },
-                journey: {
-                    useMaxWidth: true
-                },
-                timeline: {
-                    useMaxWidth: true
-                },
-                mindmap: {
-                    useMaxWidth: true
+            // Mermaidの設定（最も寛容な設定）
+            const initializeMermaid = () => {
+                try {
+                    mermaid.initialize({
+                        startOnLoad: false,
+                        theme: 'default',
+                        themeVariables: {
+                            fontSize: '16px'
+                        },
+                        logLevel: 'fatal',
+                        securityLevel: 'loose',
+                        suppressErrorRendering: false,
+                        deterministicIds: false,
+                        maxTextSize: 500000,
+                        maxEdges: 5000,
+                        flowchart: {
+                            useMaxWidth: true,
+                            htmlLabels: false,
+                            curve: 'basis',
+                            padding: 20,
+                            nodeSpacing: 70,
+                            rankSpacing: 80,
+                            diagramPadding: 10
+                        },
+                        sequence: {
+                            useMaxWidth: true,
+                            wrap: true,
+                            actorMargin: 50,
+                            mirrorActors: false
+                        },
+                        gantt: {
+                            useMaxWidth: true,
+                            titleTopMargin: 25,
+                            barHeight: 20,
+                            barGap: 4,
+                            topPadding: 50,
+                            leftPadding: 75
+                        },
+                        class: {
+                            useMaxWidth: true
+                        },
+                        state: {
+                            useMaxWidth: true
+                        },
+                        er: {
+                            useMaxWidth: true
+                        },
+                        journey: {
+                            useMaxWidth: true
+                        },
+                        timeline: {
+                            useMaxWidth: true
+                        },
+                        mindmap: {
+                            useMaxWidth: true
+                        }
+                    });
+                    return true;
+                } catch (e) {
+                    console.error('Mermaid初期化エラー:', e);
+                    return false;
                 }
-            });
+            };
+
+            // 初期化実行
+            if (!initializeMermaid()) {
+                alert('Mermaidの初期化に失敗しました。ページを再読み込みしてください。');
+                return;
+            }
 
             // テンプレートボタン生成
             const tpl = $('templates');
@@ -566,7 +589,7 @@
                 if (el) {
                     el.textContent = text;
                     el.classList.add('show');
-                    const duration = type === 'error' ? 5000 : type === 'warning' ? 3000 : 2000;
+                    const duration = type === 'error' ? 6000 : type === 'warning' ? 3000 : 2000;
                     setTimeout(() => el.classList.remove('show'), duration);
                 }
             };
@@ -580,39 +603,6 @@
                 } catch (e) {
                     console.error('保存エラー:', e);
                 }
-            };
-
-            // コードのバリデーション（緩和版）
-            const validateCode = (src) => {
-                if (!src || !src.trim()) {
-                    return { valid: false, error: 'コードが空です' };
-                }
-
-                // 基本的な構文チェック（緩和）
-                const lines = src.trim().split('\n');
-                const firstLine = lines[0].trim().toLowerCase();
-
-                const validTypes = [
-                    'graph', 'flowchart', 'sequencediagram', 'classdiagram',
-                    'statediagram', 'statediagram-v2', 'erdiagram', 'gantt',
-                    'pie', 'gitgraph', 'journey', 'mindmap', 'timeline',
-                    'quadrantchart', 'requirementdiagram', 'c4context', 'c4',
-                    'xychart', 'sankey', 'block', 'packet'
-                ];
-
-                const isValidType = validTypes.some(type =>
-                    firstLine.startsWith(type) || firstLine.includes(type)
-                );
-
-                // ダイアグラムタイプのチェックを警告のみに
-                if (!isValidType) {
-                    console.warn('認識できないダイアグラムタイプ:', firstLine);
-                    // バリデーションエラーにはせず、Mermaid自体に判断させる
-                }
-
-                // 括弧のバランスチェックは削除（コメントやテキスト内の括弧で誤検知するため）
-
-                return { valid: true };
             };
 
             const render = async () => {
@@ -633,133 +623,117 @@
                     return;
                 }
 
-                // バリデーション
-                const validation = validateCode(src);
-                if (!validation.valid) {
-                    msg('error', validation.error);
-                    output.innerHTML = '<span class="empty">エラー: ' + validation.error + '</span>';
-                    svgBtn.disabled = true;
-                    pngBtn.disabled = true;
-                    return;
-                }
-
                 rendering = true;
                 loading.classList.add('show');
                 output.innerHTML = '';
                 svgBtn.disabled = true;
                 pngBtn.disabled = true;
 
+                // 古いSVG要素をクリーンアップ
+                const oldSvgs = document.querySelectorAll('#mermaidOutput svg, svg[id^="mermaid-"]');
+                oldSvgs.forEach(svg => {
+                    try {
+                        svg.remove();
+                    } catch (e) {
+                        console.warn('SVGクリーンアップエラー:', e);
+                    }
+                });
+
                 try {
                     // ユニークIDを生成
-                    const id = `mermaid-${Date.now()}-${++renderCount}`;
+                    const id = `mermaid-diagram-${Date.now()}-${++renderCount}`;
 
-                    console.log('レンダリング開始:', { id, codeLength: src.length });
+                    console.log('=== レンダリング開始 ===');
+                    console.log('ID:', id);
+                    console.log('コード長:', src.length);
+                    console.log('ノード数（推定）:', (src.match(/\[.*?\]/g) || []).length);
 
-                    // コードのクリーンアップ（コメント行を保持、空行のみ削除）
-                    const cleanedSrc = src
-                        .split('\n')
-                        .map(line => line.trimEnd()) // 行末の空白のみ削除
-                        .filter(line => line.length > 0 || line.trim().startsWith('%%')) // 空行を削除、コメントは保持
-                        .join('\n');
+                    // Mermaidを再初期化（前の状態をクリア）
+                    initializeMermaid();
 
-                    console.log('クリーンアップ後のコード:', cleanedSrc.substring(0, 200) + '...');
+                    // レンダリング実行
+                    const result = await mermaid.render(id, src);
 
-                    // Mermaidのレンダリング（リトライ付き）
-                    let svg;
-                    let lastError;
-
-                    try {
-                        const result = await mermaid.render(id, cleanedSrc);
-                        svg = result.svg;
-                    } catch (firstError) {
-                        console.warn('初回レンダリング失敗、元のコードで再試行:', firstError);
-                        // クリーンアップが原因の場合、元のコードで再試行
-                        try {
-                            const result = await mermaid.render(id + '-retry', src);
-                            svg = result.svg;
-                        } catch (secondError) {
-                            lastError = secondError;
-                        }
+                    if (!result || !result.svg) {
+                        throw new Error('SVGの生成に失敗しました（結果が空です）');
                     }
 
-                    if (!svg) {
-                        throw lastError || new Error('SVGの生成に失敗しました');
-                    }
+                    console.log('レンダリング成功');
 
-                    // レンダリング成功
-                    output.innerHTML = svg;
+                    // SVGを挿入
+                    output.innerHTML = result.svg;
 
                     // SVGの調整
                     const svgElement = output.querySelector('svg');
                     if (svgElement) {
-                        // ViewBoxがない場合は追加
+                        // スタイル設定
+                        svgElement.style.maxWidth = '100%';
+                        svgElement.style.height = 'auto';
+                        svgElement.style.display = 'block';
+
+                        // ViewBoxの確認と設定
                         if (!svgElement.hasAttribute('viewBox')) {
                             try {
                                 const bbox = svgElement.getBBox();
-                                if (bbox && bbox.width && bbox.height) {
+                                if (bbox && bbox.width > 0 && bbox.height > 0) {
                                     svgElement.setAttribute('viewBox', `0 0 ${bbox.width} ${bbox.height}`);
                                 }
                             } catch (bboxError) {
-                                console.warn('ViewBox設定エラー:', bboxError);
+                                console.warn('ViewBox設定をスキップ:', bboxError.message);
                             }
                         }
-
-                        // 最大幅を設定
-                        svgElement.style.maxWidth = '100%';
-                        svgElement.style.height = 'auto';
 
                         applyZoom();
                         msg('success', 'レンダリング完了');
                         svgBtn.disabled = false;
                         pngBtn.disabled = false;
+
+                        console.log('=== レンダリング完了 ===');
                     } else {
                         throw new Error('SVG要素が見つかりません');
                     }
                 } catch (e) {
-                    console.error('レンダリングエラー詳細:', {
-                        message: e.message,
-                        stack: e.stack,
-                        error: e
-                    });
+                    console.error('=== レンダリングエラー ===');
+                    console.error('エラータイプ:', e.constructor.name);
+                    console.error('エラーメッセージ:', e.message);
+                    console.error('スタック:', e.stack);
 
-                    // 詳細なエラーメッセージ
-                    let errorMsg = '';
-                    let errorDetail = '';
-                    let errorHint = '';
+                    // エラーメッセージの解析
+                    let userMsg = 'レンダリングエラー';
+                    let detail = '';
 
-                    if (e.message) {
-                        errorMsg = e.message;
+                    const errorMsg = e.message || '';
 
-                        // エラー行を抽出（可能な場合）
-                        const lineMatch = e.message.match(/line (\d+)/i) || e.message.match(/at (\d+)/);
-                        if (lineMatch) {
-                            errorHint = `\n行 ${lineMatch[1]} 付近を確認してください。`;
-                        }
-
-                        // Mermaid v11の特定エラーに対応
-                        if (e.message.includes('Syntax error')) {
-                            errorDetail = '構文エラー: 矢印(-->)、ノード定義、ラベルの書き方を確認してください。';
-                        } else if (e.message.includes('Parse error')) {
-                            errorDetail = 'パースエラー: グラフタイプ宣言、ノード間の接続を確認してください。';
-                        } else if (e.message.includes('Lexical error')) {
-                            errorDetail = '字句エラー: 使用できない記号や特殊文字が含まれています。';
-                        } else if (e.message.includes('undefined') || e.message.includes('Cannot read')) {
-                            errorDetail = '未定義エラー: 存在しないノードへの参照があります。';
-                        } else if (e.message.includes('security')) {
-                            errorDetail = 'セキュリティエラー: HTMLタグが含まれています。テキストのみ使用してください。';
-                        } else if (e.message.includes('Expecting')) {
-                            errorDetail = '構文エラー: 期待される要素が見つかりません。';
-                        } else {
-                            errorDetail = 'コードの形式を確認してください。コメント行(%%）も確認してみてください。';
-                        }
-                    } else {
-                        errorMsg = '不明なエラーが発生しました';
-                        errorDetail = 'ブラウザのコンソール（F12）を開いて詳細を確認してください。';
+                    // エラー行の抽出
+                    const lineMatch = errorMsg.match(/line\s+(\d+)|:(\d+):/i);
+                    if (lineMatch) {
+                        const lineNum = lineMatch[1] || lineMatch[2];
+                        detail += `\n問題の場所: 行 ${lineNum}`;
                     }
 
-                    const fullErrorMsg = `${errorMsg}${errorHint}\n${errorDetail}`;
-                    msg('error', fullErrorMsg);
-                    output.innerHTML = `<span class="empty">表示できません<br><small style="color:#999;margin-top:8px;display:block;white-space:pre-wrap;">${errorMsg}${errorHint}</small></span>`;
+                    // エラータイプ別のメッセージ
+                    if (errorMsg.includes('Syntax error') || errorMsg.includes('Parse error')) {
+                        userMsg = '構文エラー';
+                        detail += '\n矢印（-->）やノード定義の書き方を確認してください。';
+                        detail += '\nコメント行（%%）の位置も確認してください。';
+                    } else if (errorMsg.includes('Lexical error')) {
+                        userMsg = '字句解析エラー';
+                        detail += '\n使用できない記号や特殊文字が含まれています。';
+                    } else if (errorMsg.includes('undefined') || errorMsg.includes('Cannot read')) {
+                        userMsg = '未定義エラー';
+                        detail += '\n存在しないノードが参照されています。';
+                    } else if (errorMsg.includes('Maximum')) {
+                        userMsg = 'サイズ制限エラー';
+                        detail += '\n図が大きすぎます。ノード数を減らすか、複数の図に分割してください。';
+                    } else if (errorMsg.includes('Expecting')) {
+                        userMsg = '構文エラー';
+                        detail += '\n' + errorMsg.split('Expecting')[1];
+                    } else if (errorMsg) {
+                        userMsg = errorMsg.substring(0, 100);
+                    }
+
+                    msg('error', userMsg + detail);
+                    output.innerHTML = `<span class="empty">表示できません<br><small style="color:#999;margin-top:8px;display:block;white-space:pre-wrap;">${userMsg}${detail}</small></span>`;
                     svgBtn.disabled = true;
                     pngBtn.disabled = true;
                 } finally {
@@ -829,8 +803,6 @@
                 try {
                     const clone = svg.cloneNode(true);
                     clone.removeAttribute('style');
-
-                    // 名前空間の追加
                     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
                     clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
 
@@ -839,6 +811,7 @@
                     download(blob, `mermaid-diagram-${Date.now()}.svg`);
                     msg('success', 'SVG保存完了');
                 } catch (e) {
+                    console.error('SVG保存エラー:', e);
                     msg('error', 'SVG保存エラー: ' + e.message);
                 }
             };
@@ -859,14 +832,20 @@
                     clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
 
                     // SVGのサイズを取得
-                    const bbox = svg.getBBox();
-                    const svgWidth = bbox.width || svg.clientWidth || 800;
-                    const svgHeight = bbox.height || svg.clientHeight || 600;
+                    let svgWidth, svgHeight;
+                    try {
+                        const bbox = svg.getBBox();
+                        svgWidth = bbox.width || svg.clientWidth || 800;
+                        svgHeight = bbox.height || svg.clientHeight || 600;
+                    } catch (e) {
+                        svgWidth = svg.clientWidth || 800;
+                        svgHeight = svg.clientHeight || 600;
+                    }
 
                     // 高解像度用のスケール
                     const scale = 3;
 
-                    // SVGデータをBase64エンコード
+                    // SVGデータをBlobに
                     const svgData = clone.outerHTML;
                     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
                     const url = URL.createObjectURL(svgBlob);
@@ -882,15 +861,10 @@
                                 canvas.height = svgHeight * scale;
 
                                 const ctx = canvas.getContext('2d');
-
-                                // 背景を白に
                                 ctx.fillStyle = '#ffffff';
                                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                                // SVGを描画
                                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-                                // PNGに変換
                                 canvas.toBlob(
                                     (blob) => {
                                         if (blob) {
@@ -915,6 +889,14 @@
                             URL.revokeObjectURL(url);
                             reject(new Error('画像の読み込みに失敗しました'));
                         };
+
+                        // タイムアウト設定
+                        setTimeout(() => {
+                            if (!img.complete) {
+                                URL.revokeObjectURL(url);
+                                reject(new Error('画像読み込みがタイムアウトしました'));
+                            }
+                        }, 10000);
                     });
 
                     img.src = url;
@@ -927,13 +909,11 @@
             };
 
             code.onkeydown = e => {
-                // Ctrl+Enter で実行
                 if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                     e.preventDefault();
                     render();
                 }
 
-                // Tabキーでインデント
                 if (e.key === 'Tab') {
                     e.preventDefault();
                     const start = code.selectionStart;
@@ -948,20 +928,18 @@
             code.oninput = () => {
                 save();
                 clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(render, 800);
+                debounceTimer = setTimeout(render, 1000);
             };
 
             // 初期化
             try {
                 const saved = localStorage.getItem('mermaid_code');
                 code.value = saved || TEMPLATES.flowchart[1];
-
-                // 初回レンダリングを少し遅延
-                setTimeout(render, 100);
+                setTimeout(render, 200);
             } catch (e) {
                 console.error('初期化エラー:', e);
                 code.value = TEMPLATES.flowchart[1];
-                setTimeout(render, 100);
+                setTimeout(render, 200);
             }
         })();
     </script>
