@@ -826,10 +826,25 @@
                 try {
                     msg('warning', 'PNG生成中...');
 
+                    // SVGをクローン
                     const clone = svg.cloneNode(true);
                     clone.removeAttribute('style');
                     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
                     clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+
+                    // 外部参照をすべて削除（CORS対策）
+                    // xlink:hrefを持つ要素を削除
+                    const externalRefs = clone.querySelectorAll('[*|href^="http"], [href^="http"]');
+                    externalRefs.forEach(el => el.removeAttribute('href'));
+                    externalRefs.forEach(el => el.removeAttribute('xlink:href'));
+
+                    // style要素内のurl()参照を削除
+                    const styleElements = clone.querySelectorAll('style');
+                    styleElements.forEach(style => {
+                        if (style.textContent) {
+                            style.textContent = style.textContent.replace(/url\([^)]+\)/g, 'none');
+                        }
+                    });
 
                     // SVGのサイズを取得
                     let svgWidth, svgHeight;
@@ -847,49 +862,58 @@
                     // 高解像度用のスケール
                     const scale = 3;
 
-                    // SVGデータをData URLに変換（CORS問題を回避）
+                    // Canvas作成
+                    const canvas = document.createElement('canvas');
+                    canvas.width = svgWidth * scale;
+                    canvas.height = svgHeight * scale;
+
+                    const ctx = canvas.getContext('2d', { willReadFrequently: false });
+
+                    // 背景を白に
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // SVGデータをData URLに変換
                     const svgData = clone.outerHTML;
                     const svgBase64 = btoa(unescape(encodeURIComponent(svgData)));
                     const dataUrl = `data:image/svg+xml;base64,${svgBase64}`;
 
                     // 画像として読み込み
                     const img = new Image();
+                    img.crossOrigin = 'anonymous';  // CORS設定を明示
 
                     const pngPromise = new Promise((resolve, reject) => {
                         img.onload = () => {
                             try {
                                 console.log('画像読み込み成功');
 
-                                const canvas = document.createElement('canvas');
-                                canvas.width = svgWidth * scale;
-                                canvas.height = svgHeight * scale;
-
-                                const ctx = canvas.getContext('2d');
-
-                                // 背景を白に
-                                ctx.fillStyle = '#ffffff';
-                                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
                                 // SVGを描画
                                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
                                 console.log('Canvas描画完了');
 
-                                // PNGに変換
-                                canvas.toBlob(
-                                    (blob) => {
-                                        if (blob) {
-                                            console.log('PNG変換成功:', blob.size, 'bytes');
-                                            download(blob, `mermaid-diagram-${Date.now()}.png`);
-                                            msg('success', 'PNG保存完了');
-                                            resolve();
-                                        } else {
-                                            reject(new Error('PNG変換に失敗しました'));
-                                        }
-                                    },
-                                    'image/png',
-                                    1.0
-                                );
+                                // canvas.toBlobの代わりにtoDataURLを使用（より安全）
+                                try {
+                                    const pngDataUrl = canvas.toDataURL('image/png', 1.0);
+
+                                    // Data URLをBlobに変換
+                                    const base64Data = pngDataUrl.split(',')[1];
+                                    const byteCharacters = atob(base64Data);
+                                    const byteNumbers = new Array(byteCharacters.length);
+                                    for (let i = 0; i < byteCharacters.length; i++) {
+                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                    }
+                                    const byteArray = new Uint8Array(byteNumbers);
+                                    const blob = new Blob([byteArray], { type: 'image/png' });
+
+                                    console.log('PNG変換成功:', blob.size, 'bytes');
+                                    download(blob, `mermaid-diagram-${Date.now()}.png`);
+                                    msg('success', 'PNG保存完了');
+                                    resolve();
+                                } catch (dataUrlError) {
+                                    console.error('toDataURLエラー:', dataUrlError);
+                                    reject(new Error('PNG変換に失敗しました: ' + dataUrlError.message));
+                                }
                             } catch (e) {
                                 console.error('Canvas処理エラー:', e);
                                 reject(e);
