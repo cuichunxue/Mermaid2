@@ -842,13 +842,15 @@
                         svgHeight = svg.clientHeight || 600;
                     }
 
+                    console.log('PNG生成:', { svgWidth, svgHeight });
+
                     // 高解像度用のスケール
                     const scale = 3;
 
-                    // SVGデータをBlobに
+                    // SVGデータをData URLに変換（CORS問題を回避）
                     const svgData = clone.outerHTML;
-                    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-                    const url = URL.createObjectURL(svgBlob);
+                    const svgBase64 = btoa(unescape(encodeURIComponent(svgData)));
+                    const dataUrl = `data:image/svg+xml;base64,${svgBase64}`;
 
                     // 画像として読み込み
                     const img = new Image();
@@ -856,18 +858,28 @@
                     const pngPromise = new Promise((resolve, reject) => {
                         img.onload = () => {
                             try {
+                                console.log('画像読み込み成功');
+
                                 const canvas = document.createElement('canvas');
                                 canvas.width = svgWidth * scale;
                                 canvas.height = svgHeight * scale;
 
                                 const ctx = canvas.getContext('2d');
+
+                                // 背景を白に
                                 ctx.fillStyle = '#ffffff';
                                 ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                                // SVGを描画
                                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
+                                console.log('Canvas描画完了');
+
+                                // PNGに変換
                                 canvas.toBlob(
                                     (blob) => {
                                         if (blob) {
+                                            console.log('PNG変換成功:', blob.size, 'bytes');
                                             download(blob, `mermaid-diagram-${Date.now()}.png`);
                                             msg('success', 'PNG保存完了');
                                             resolve();
@@ -879,27 +891,26 @@
                                     1.0
                                 );
                             } catch (e) {
+                                console.error('Canvas処理エラー:', e);
                                 reject(e);
-                            } finally {
-                                URL.revokeObjectURL(url);
                             }
                         };
 
-                        img.onerror = () => {
-                            URL.revokeObjectURL(url);
+                        img.onerror = (e) => {
+                            console.error('画像読み込みエラー:', e);
                             reject(new Error('画像の読み込みに失敗しました'));
                         };
 
                         // タイムアウト設定
                         setTimeout(() => {
                             if (!img.complete) {
-                                URL.revokeObjectURL(url);
+                                console.error('画像読み込みタイムアウト');
                                 reject(new Error('画像読み込みがタイムアウトしました'));
                             }
                         }, 10000);
                     });
 
-                    img.src = url;
+                    img.src = dataUrl;
                     await pngPromise;
 
                 } catch (e) {
