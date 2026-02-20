@@ -356,9 +356,9 @@
 
             const TEMPLATES = {
                 flowchart: ['フローチャート', `graph TD
-    A[開始] --> B{条件分岐}
-    B -->|Yes| C[処理A]
-    B -->|No| D[処理B]
+    A[開始] --> B{条件<br/>分岐}
+    B -->|Yes| C[処理A<br/>成功]
+    B -->|No| D[処理B<br/>失敗]
     C --> E[終了]
     D --> E`],
                 sequence: ['シーケンス図', `sequenceDiagram
@@ -500,12 +500,12 @@
                     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
                 },
                 logLevel: 'error',
-                securityLevel: 'strict',
+                securityLevel: 'loose',
                 deterministicIds: true,
                 deterministicIDSeed: 'mermaid-editor',
                 flowchart: {
                     useMaxWidth: true,
-                    htmlLabels: true,
+                    htmlLabels: false,
                     curve: 'basis'
                 },
                 sequence: {
@@ -769,6 +769,38 @@
                 applyZoom();
             };
 
+            // エクスポート用SVG準備ヘルパー
+            const prepareSvgForExport = (svg) => {
+                const clone = svg.cloneNode(true);
+                clone.removeAttribute('style');
+                clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+
+                // viewBoxからサイズを取得、なければBBoxから計算
+                let width, height;
+                const viewBox = clone.getAttribute('viewBox');
+                if (viewBox) {
+                    const parts = viewBox.split(/[\s,]+/).map(Number);
+                    width = parts[2];
+                    height = parts[3];
+                } else {
+                    try {
+                        const bbox = svg.getBBox();
+                        width = Math.ceil(bbox.x + bbox.width + 10);
+                        height = Math.ceil(bbox.y + bbox.height + 10);
+                    } catch (e) {
+                        width = svg.clientWidth || 800;
+                        height = svg.clientHeight || 600;
+                    }
+                    clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
+                }
+
+                clone.setAttribute('width', String(width));
+                clone.setAttribute('height', String(height));
+
+                return { clone, width, height };
+            };
+
             svgBtn.onclick = () => {
                 const svg = output.querySelector('svg');
                 if (!svg) {
@@ -777,15 +809,11 @@
                 }
 
                 try {
-                    const clone = svg.cloneNode(true);
-                    clone.removeAttribute('style');
-
-                    // 名前空間の追加
-                    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-                    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
-
-                    const svgData = clone.outerHTML;
-                    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                    const { clone } = prepareSvgForExport(svg);
+                    const serializer = new XMLSerializer();
+                    const svgString = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+                        serializer.serializeToString(clone);
+                    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
                     download(blob, `mermaid-diagram-${Date.now()}.svg`);
                     msg('success', 'SVG保存完了');
                 } catch (e) {
@@ -803,72 +831,48 @@
                 try {
                     msg('warning', 'PNG生成中...');
 
-                    const clone = svg.cloneNode(true);
-                    clone.removeAttribute('style');
-                    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-                    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
-
-                    // SVGのサイズを取得
-                    const bbox = svg.getBBox();
-                    const svgWidth = bbox.width || svg.clientWidth || 800;
-                    const svgHeight = bbox.height || svg.clientHeight || 600;
-
-                    // 高解像度用のスケール
+                    const { clone, width, height } = prepareSvgForExport(svg);
                     const scale = 3;
 
-                    // SVGデータをBase64エンコード
-                    const svgData = clone.outerHTML;
-                    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-                    const url = URL.createObjectURL(svgBlob);
+                    // XMLSerializerで正確にシリアライズし、data URIで読み込む
+                    // (Blob URLではforeignObject残存時にレンダリングされない場合がある)
+                    const serializer = new XMLSerializer();
+                    const svgString = serializer.serializeToString(clone);
+                    const dataUrl = 'data:image/svg+xml;charset=utf-8,' +
+                        encodeURIComponent(svgString);
 
-                    // 画像として読み込み
                     const img = new Image();
+                    img.crossOrigin = 'anonymous';
 
-                    const pngPromise = new Promise((resolve, reject) => {
-                        img.onload = () => {
-                            try {
-                                const canvas = document.createElement('canvas');
-                                canvas.width = svgWidth * scale;
-                                canvas.height = svgHeight * scale;
-
-                                const ctx = canvas.getContext('2d');
-
-                                // 背景を白に
-                                ctx.fillStyle = '#ffffff';
-                                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                                // SVGを描画
-                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                                // PNGに変換
-                                canvas.toBlob(
-                                    (blob) => {
-                                        if (blob) {
-                                            download(blob, `mermaid-diagram-${Date.now()}.png`);
-                                            msg('success', 'PNG保存完了');
-                                            resolve();
-                                        } else {
-                                            reject(new Error('PNG変換に失敗しました'));
-                                        }
-                                    },
-                                    'image/png',
-                                    1.0
-                                );
-                            } catch (e) {
-                                reject(e);
-                            } finally {
-                                URL.revokeObjectURL(url);
-                            }
-                        };
-
-                        img.onerror = () => {
-                            URL.revokeObjectURL(url);
-                            reject(new Error('画像の読み込みに失敗しました'));
-                        };
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = () => reject(new Error('SVG画像の読み込みに失敗しました'));
+                        img.src = dataUrl;
                     });
 
-                    img.src = url;
-                    await pngPromise;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.ceil(width * scale);
+                    canvas.height = Math.ceil(height * scale);
+                    const ctx = canvas.getContext('2d');
+
+                    // 背景を白に
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // SVGを描画
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                    // PNGに変換
+                    const blob = await new Promise((resolve, reject) => {
+                        canvas.toBlob(
+                            b => b ? resolve(b) : reject(new Error('PNG変換に失敗しました')),
+                            'image/png',
+                            1.0
+                        );
+                    });
+
+                    download(blob, `mermaid-diagram-${Date.now()}.png`);
+                    msg('success', 'PNG保存完了');
 
                 } catch (e) {
                     console.error('PNG生成エラー:', e);
