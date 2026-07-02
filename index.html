@@ -23,6 +23,8 @@
             --success-bg: #ecfdf3; --success-fg: #067647; --success-bd: #abefc6;
             --warn-bg: #fffaeb; --warn-fg: #b54708; --warn-bd: #fedf89;
             --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+            --mono: 'SF Mono', 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+            --code-fs: 13.5px; --code-lh: 21px; --code-pt: 14px; --code-pl: 14px;
         }
         [data-theme="dark"] {
             --bg: #0d1117;
@@ -154,12 +156,25 @@
         }
 
         /* ---------- Editor ---------- */
-        .editor-wrap { flex: 1; position: relative; min-height: 0; display: flex; }
+        .editor-wrap { flex: 1; position: relative; min-height: 0; display: flex; overflow: hidden; }
+        .gutter {
+            flex: none; min-width: 42px; padding: var(--code-pt) 8px 0; text-align: right;
+            font-family: var(--mono); font-size: var(--code-fs); line-height: var(--code-lh);
+            color: var(--text-faint); background: var(--panel-2); border-right: 1px solid var(--border);
+            overflow: hidden; user-select: none; white-space: pre; tab-size: 4;
+        }
+        .gutter .err { color: var(--error-fg); font-weight: 700; }
+        .code-area { position: relative; flex: 1; min-width: 0; }
+        .underlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        .underlay .errband {
+            position: absolute; left: 0; right: 0; height: var(--code-lh);
+            background: var(--error-bg); border-left: 3px solid var(--error-fg); display: none;
+        }
         textarea#code {
-            flex: 1; width: 100%; padding: 14px 16px; border: none; outline: none; resize: none;
-            font-family: 'SF Mono', 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
-            font-size: 13.5px; line-height: 1.6; tab-size: 4;
-            background: var(--panel); color: var(--text);
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            padding: var(--code-pt) var(--code-pl); border: none; outline: none; resize: none;
+            font-family: var(--mono); font-size: var(--code-fs); line-height: var(--code-lh); tab-size: 4;
+            background: transparent; color: var(--text); white-space: pre; overflow: auto;
         }
         textarea#code::placeholder { color: var(--text-faint); }
 
@@ -256,21 +271,28 @@
             <div class="toolbar">
                 <div class="toolbar-group">
                     <button class="btn primary" id="renderBtn" title="レンダリング実行 (Ctrl/Cmd+Enter)"><span class="ico">▶</span>実行</button>
+                    <select class="control" id="docSelect" title="ドキュメントを切替" aria-label="ドキュメント選択"></select>
+                    <button class="btn icon-only" id="newDocBtn" title="新規ドキュメント" aria-label="新規ドキュメント"><span class="ico">＋</span></button>
+                </div>
+                <div class="toolbar-group">
                     <select class="control" id="templateSelect" aria-label="テンプレートを挿入">
                         <option value="">テンプレート…</option>
                     </select>
-                </div>
-                <div class="toolbar-group">
+                    <button class="btn icon-only" id="renameDocBtn" title="名称変更" aria-label="ドキュメント名を変更"><span class="ico">✎</span></button>
                     <button class="btn icon-only" id="copyCodeBtn" title="コードをコピー" aria-label="コードをコピー"><span class="ico">⧉</span></button>
                     <button class="btn icon-only" id="importBtn" title="ファイルを開く (.mmd)" aria-label="ファイルを開く"><span class="ico">📂</span></button>
                     <button class="btn icon-only" id="exportMmdBtn" title="ファイルを保存 (.mmd)" aria-label="ファイルを保存"><span class="ico">💾</span></button>
-                    <button class="btn icon-only" id="clearBtn" title="クリア" aria-label="クリア"><span class="ico">🗑</span></button>
+                    <button class="btn icon-only" id="deleteDocBtn" title="ドキュメントを削除" aria-label="ドキュメントを削除"><span class="ico">🗑</span></button>
                     <input type="file" id="fileInput" accept=".mmd,.txt,text/plain" class="hidden">
                 </div>
             </div>
             <div class="editor-wrap">
-                <textarea id="code" spellcheck="false" autocapitalize="off" autocorrect="off"
-                    placeholder="Mermaidコードを入力… 例:&#10;graph TD&#10;  A[開始] --> B[終了]"></textarea>
+                <div class="gutter" id="gutter" aria-hidden="true"></div>
+                <div class="code-area">
+                    <div class="underlay"><div class="errband" id="errband"></div></div>
+                    <textarea id="code" wrap="off" spellcheck="false" autocapitalize="off" autocorrect="off"
+                        placeholder="Mermaidコードを入力… 例:&#10;graph TD&#10;  A[開始] --> B[終了]"></textarea>
+                </div>
             </div>
             <div class="editor-status">
                 <span id="typeLabel">—</span>
@@ -473,6 +495,9 @@
          * Elements & state
          * ============================================================ */
         const code = $('code'),
+              gutter = $('gutter'),
+              errband = $('errband'),
+              docSelect = $('docSelect'),
               output = $('mermaidOutput'),
               viewport = $('viewport'),
               previewArea = $('previewArea'),
@@ -489,13 +514,16 @@
               pngBtn = $('pngBtn'),
               copyImgBtn = $('copyImgBtn');
 
-        const LS_CODE = 'mermaid_code', LS_THEME = 'mermaid_theme';
+        const LS_CODE = 'mermaid_code', LS_THEME = 'mermaid_theme',
+              LS_DOCS = 'mermaid_docs', LS_CUR = 'mermaid_current';
 
         let scale = 1, tx = 0, ty = 0;       // viewport transform
         let naturalW = 0, naturalH = 0;      // rendered svg natural size
         let rendering = false, renderToken = 0;
         let saveTimer, debounceTimer;
         let theme = localStorage.getItem(LS_THEME) || 'light';
+        let errorLine = 0;                    // 1-based line with a syntax error (0 = none)
+        let docs = [], currentId = null;      // document management
 
         /* ============================================================
          * Mermaid config
@@ -564,11 +592,101 @@
             saveTimer = setTimeout(() => savedBadge.classList.remove('show'), 1400);
         }
 
-        function save() {
+        /* ---------- Document management ---------- */
+        const uid = () => 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const currentDoc = () => docs.find(d => d.id === currentId);
+
+        function persistDocs() {
             try {
-                localStorage.setItem(LS_CODE, code.value);
-                flashSaved();
+                localStorage.setItem(LS_DOCS, JSON.stringify(docs));
+                localStorage.setItem(LS_CUR, currentId);
             } catch (e) { /* quota/private mode — silent */ }
+        }
+
+        function loadDocs() {
+            try { docs = JSON.parse(localStorage.getItem(LS_DOCS) || '[]'); } catch (_) { docs = []; }
+            if (!Array.isArray(docs) || !docs.length) {
+                // 旧バージョンの単一コードを移行、なければ既定テンプレート
+                let legacy = null;
+                try { legacy = localStorage.getItem(LS_CODE); } catch (_) {}
+                docs = [{ id: uid(), name: '無題1', code: legacy || TEMPLATES.flowchart[1], updated: Date.now() }];
+            }
+            currentId = localStorage.getItem(LS_CUR);
+            if (!currentDoc()) currentId = docs[0].id;
+        }
+
+        function refreshDocSelect() {
+            docSelect.innerHTML = '';
+            docs.forEach(d => {
+                const o = document.createElement('option');
+                o.value = d.id; o.textContent = d.name;
+                if (d.id === currentId) o.selected = true;
+                docSelect.appendChild(o);
+            });
+        }
+
+        // 現在のエディタ内容を現在ドキュメントへ保存
+        function save() {
+            const d = currentDoc();
+            if (d) { d.code = code.value; d.updated = Date.now(); }
+            persistDocs();
+            flashSaved();
+        }
+
+        // ドキュメントを切り替え／新規反映（現在の内容は保存済み前提で呼ぶ）
+        function loadCurrentIntoEditor() {
+            const d = currentDoc();
+            code.value = d ? d.code : '';
+            errorLine = 0;
+            refreshDocSelect();
+            updateMeta();
+            render();
+        }
+
+        function switchDoc(id) {
+            save();
+            currentId = id;
+            persistDocs();
+            loadCurrentIntoEditor();
+        }
+
+        function createDoc(name, codeVal, focusEditor) {
+            save();
+            const d = { id: uid(), name, code: codeVal || '', updated: Date.now() };
+            docs.push(d);
+            currentId = d.id;
+            persistDocs();
+            loadCurrentIntoEditor();
+            if (focusEditor) code.focus();
+            return d;
+        }
+
+        /* ---------- Gutter (line numbers) & error line ---------- */
+        function renderGutter() {
+            const n = Math.max(1, code.value.split('\n').length);
+            let html = '';
+            for (let i = 1; i <= n; i++) {
+                html += (i === errorLine ? `<span class="err">${i}</span>` : i) + '\n';
+            }
+            gutter.innerHTML = html;
+            gutter.scrollTop = code.scrollTop;
+        }
+
+        function updateErrBand() {
+            if (errorLine > 0) {
+                const lh = parseFloat(getComputedStyle(code).lineHeight) || 21;
+                const pt = parseFloat(getComputedStyle(code).paddingTop) || 14;
+                errband.style.display = 'block';
+                errband.style.top = (pt + (errorLine - 1) * lh - code.scrollTop) + 'px';
+            } else {
+                errband.style.display = 'none';
+            }
+        }
+
+        function setErrorLine(line) {
+            errorLine = line > 0 ? line : 0;
+            renderGutter();
+            updateErrBand();
         }
 
         // 先頭の frontmatter / ディレクティブ / コメントを除いた最初の語で図種を推定（表示用のみ）
@@ -596,6 +714,7 @@
             countLabel.textContent = `${lines} 行 / ${v.length} 文字`;
             const t = detectType(v);
             typeLabel.textContent = t ? `種別: ${t}` : '—';
+            renderGutter();
         }
 
         /* ============================================================
@@ -686,6 +805,7 @@
                 viewport.classList.remove('grabbable');
                 emptyState.classList.remove('hidden');
                 svgBtn.disabled = pngBtn.disabled = copyImgBtn.disabled = true;
+                setErrorLine(0);
                 setStatus('', '空');
                 return;
             }
@@ -702,8 +822,11 @@
                 rendering = false;
                 spinner.classList.remove('show');
                 const detail = (e && (e.str || e.message)) || '構文エラー';
+                let line = e && e.hash && e.hash.loc && e.hash.loc.first_line;
+                if (!line) { const m = /line (\d+)/i.exec(detail); if (m) line = +m[1]; }
+                setErrorLine(line || 0);
                 showError('構文エラー:\n' + detail);
-                setStatus('bad', '構文エラー');
+                setStatus('bad', '構文エラー' + (line ? `（${line}行目）` : ''));
                 svgBtn.disabled = pngBtn.disabled = copyImgBtn.disabled = true;
                 return;
             }
@@ -731,6 +854,7 @@
 
                 svgBtn.disabled = pngBtn.disabled = false;
                 copyImgBtn.disabled = !(navigator.clipboard && window.ClipboardItem);
+                setErrorLine(0);
                 setStatus('ok', detectType(src) || 'OK');
             } catch (e) {
                 if (token !== renderToken) return;
@@ -872,8 +996,8 @@
             if (!file) return;
             const reader = new FileReader();
             reader.onload = () => {
-                code.value = reader.result;
-                save(); updateMeta(); render();
+                const name = file.name.replace(/\.(mmd|txt)$/i, '') || '読込';
+                createDoc(name, String(reader.result));   // 新規ドキュメントとして開く
                 toast('読み込みました: ' + file.name);
             };
             reader.onerror = () => toast('ファイル読込に失敗しました', true);
@@ -881,9 +1005,12 @@
             e.target.value = '';
         };
 
+        function safeName(s) { return (s || 'mermaid').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60); }
+
         $('exportMmdBtn').onclick = () => {
             if (!code.value.trim()) return toast('保存するコードがありません', true);
-            download(new Blob([code.value], { type: 'text/plain;charset=utf-8' }), tsName('mmd'));
+            const nm = safeName(currentDoc() && currentDoc().name);
+            download(new Blob([code.value], { type: 'text/plain;charset=utf-8' }), nm + '.mmd');
             toast('.mmd を保存しました');
         };
 
@@ -892,16 +1019,37 @@
          * ============================================================ */
         $('renderBtn').onclick = () => render();
 
-        $('clearBtn').onclick = () => {
-            if (!code.value || confirm('コードをクリアしますか？')) {
-                code.value = '';
-                localStorage.removeItem(LS_CODE);
-                output.innerHTML = '';
-                emptyState.classList.remove('hidden');
-                viewport.classList.remove('grabbable');
-                svgBtn.disabled = pngBtn.disabled = copyImgBtn.disabled = true;
-                clearError(); updateMeta(); setStatus('', '空');
+        docSelect.onchange = () => switchDoc(docSelect.value);
+
+        $('newDocBtn').onclick = () => {
+            const base = '無題';
+            let n = docs.length + 1;
+            const names = new Set(docs.map(d => d.name));
+            while (names.has(base + n)) n++;
+            createDoc(base + n, '', true);
+            toast('新規ドキュメントを作成しました');
+        };
+
+        $('renameDocBtn').onclick = () => {
+            const d = currentDoc();
+            if (!d) return;
+            const name = prompt('ドキュメント名', d.name);
+            if (name && name.trim()) {
+                d.name = name.trim().slice(0, 60);
+                persistDocs(); refreshDocSelect();
             }
+        };
+
+        $('deleteDocBtn').onclick = () => {
+            const d = currentDoc();
+            if (!d) return;
+            if (!confirm(`ドキュメント「${d.name}」を削除しますか？`)) return;
+            docs = docs.filter(x => x.id !== d.id);
+            if (!docs.length) docs.push({ id: uid(), name: '無題1', code: TEMPLATES.flowchart[1], updated: Date.now() });
+            currentId = docs[0].id;
+            persistDocs();
+            loadCurrentIntoEditor();
+            toast('削除しました');
         };
 
         $('copyCodeBtn').onclick = async () => {
@@ -959,7 +1107,8 @@
                 '  ドラッグ … 図の移動（パン）',
                 '',
                 '【機能】',
-                '  ・入力は自動保存（ブラウザ内）',
+                '  ・複数ドキュメント管理（＋新規 / ✎名称変更 / 🗑削除、自動保存）',
+                '  ・行番号表示 & 構文エラー行のハイライト',
                 '  ・SVG / PNG（最大4x）書き出し',
                 '  ・画像をクリップボードへコピー',
                 '  ・🔗 共有リンク（コードをURLに埋め込み）',
@@ -987,6 +1136,12 @@
             save(); updateMeta();
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => render({ silent: true }), 700);
+        });
+
+        // 行番号ガター／エラーバンドをスクロールに追従
+        code.addEventListener('scroll', () => {
+            gutter.scrollTop = code.scrollTop;
+            updateErrBand();
         });
 
         document.addEventListener('keydown', e => {
@@ -1034,16 +1189,26 @@
          * Init
          * ============================================================ */
         (function init() {
-            let initial = '';
+            loadDocs();
+
+            // 共有リンク(#code=...)があれば、新規ドキュメントとして取り込む
             const m = location.hash.match(/#code=(.+)/);
             if (m) {
-                try { initial = decodeShare(m[1]); } catch (_) {}
+                try {
+                    const shared = decodeShare(m[1]);
+                    if (shared && shared.trim()) {
+                        const d = { id: uid(), name: '共有図', code: shared, updated: Date.now() };
+                        docs.push(d);
+                        currentId = d.id;
+                        persistDocs();
+                    }
+                } catch (_) {}
+                // 再読込時に重複追加しないようハッシュを除去
+                history.replaceState(null, '', location.pathname + location.search);
             }
-            if (!initial) {
-                try { initial = localStorage.getItem(LS_CODE) || ''; } catch (_) {}
-            }
-            if (!initial) initial = TEMPLATES.flowchart[1];
-            code.value = initial;
+
+            code.value = currentDoc() ? currentDoc().code : '';
+            refreshDocSelect();
             updateMeta();
             setStatus('', '準備完了');
             render();
