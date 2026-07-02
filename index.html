@@ -6,6 +6,8 @@
     <meta name="description" content="ブラウザだけで動くMermaid図エディタ。フローチャート・シーケンス図・ER図などをリアルタイムにプレビューし、SVG/PNGで書き出せます。">
     <meta name="color-scheme" content="light dark">
     <title>Mermaid図エディタ</title>
+    <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="%232563eb"/><stop offset="1" stop-color="%237c3aed"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(%23g)"/><text x="32" y="45" font-size="38" font-weight="700" text-anchor="middle" fill="white" font-family="sans-serif">M</text></svg>'>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <style>
         :root {
             --bg: #f4f5f7;
@@ -237,6 +239,27 @@
         .fatal h2 { font-size: 1.1rem; }
         .fatal p { color: var(--text-soft); font-size: .88rem; max-width: 440px; line-height: 1.6; }
 
+        /* help dialog */
+        dialog.help {
+            margin: auto;   /* リセットの margin:0 を打ち消し、showModal で中央表示 */
+            border: 1px solid var(--border); border-radius: 12px;
+            background: var(--panel); color: var(--text);
+            padding: 22px 26px; max-width: 460px; width: calc(100vw - 48px);
+            box-shadow: 0 10px 40px rgba(0,0,0,.25); font-size: .85rem;
+        }
+        dialog.help::backdrop { background: rgba(0,0,0,.4); }
+        dialog.help h2 { font-size: 1rem; margin-bottom: 4px; }
+        dialog.help h3 { font-size: .76rem; font-weight: 600; color: var(--text-soft); text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 8px; }
+        dialog.help ul { list-style: none; display: flex; flex-direction: column; gap: 6px; color: var(--text-soft); }
+        dialog.help li { display: flex; align-items: center; gap: 8px; line-height: 1.5; }
+        dialog.help kbd {
+            font-family: var(--mono); font-size: .72rem; color: var(--text);
+            background: var(--panel-2); border: 1px solid var(--border-strong);
+            border-bottom-width: 2px; border-radius: 4px; padding: 1px 7px; white-space: nowrap;
+        }
+        dialog.help .ver { margin-top: 16px; color: var(--text-faint); font-size: .74rem; }
+        dialog.help .foot { margin-top: 14px; text-align: right; }
+
         .hidden { display: none !important; }
 
         /* ---------- Responsive ---------- */
@@ -338,6 +361,28 @@
         </section>
     </div>
 
+    <dialog class="help" id="helpDlg" aria-label="使い方">
+        <h2>Mermaid図エディタ — 使い方</h2>
+        <h3>ショートカット</h3>
+        <ul>
+            <li><kbd>Ctrl/Cmd + Enter</kbd> レンダリング実行</li>
+            <li><kbd>Tab</kbd> インデント挿入</li>
+            <li><kbd>Shift + F</kbd> 全体表示</li>
+            <li><kbd>ホイール</kbd> 拡大縮小　<kbd>ドラッグ</kbd> 図の移動</li>
+        </ul>
+        <h3>機能</h3>
+        <ul>
+            <li>複数ドキュメント管理（＋新規 / ✎名称変更 / 🗑削除、自動保存）</li>
+            <li>行番号表示と構文エラー行のハイライト</li>
+            <li>SVG / PNG（最大4x・白背景）書き出し</li>
+            <li>画像をクリップボードへコピー</li>
+            <li>🔗 共有リンク（コードをURLに埋め込み）</li>
+            <li>📂 / 💾 .mmd ファイルの読込・保存</li>
+        </ul>
+        <p class="ver" id="mmdVer"></p>
+        <div class="foot"><button class="btn primary" id="helpClose">閉じる</button></div>
+    </dialog>
+
     <div class="toast-host" id="toastHost"></div>
 
     <div class="fatal" id="fatal">
@@ -352,7 +397,8 @@
         /* ============================================================
          * Mermaid loader — 複数CDNフォールバック + タイムアウト
          * ============================================================ */
-        const MERMAID_VERSION = '11';
+        // 正確なバージョンにピン留め（レンジ指定だと将来の更新で挙動が変わり得るため）
+        const MERMAID_VERSION = '11.16.0';
         const CDN_SOURCES = [
             `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs`,
             `https://unpkg.com/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs`,
@@ -519,8 +565,8 @@
 
         let scale = 1, tx = 0, ty = 0;       // viewport transform
         let naturalW = 0, naturalH = 0;      // rendered svg natural size
-        let rendering = false, renderToken = 0;
-        let saveTimer, debounceTimer;
+        let renderToken = 0;
+        let saveTimer, debounceTimer, persistTimer;
         let theme = localStorage.getItem(LS_THEME) || 'light';
         let errorLine = 0;                    // 1-based line with a syntax error (0 = none)
         let docs = [], currentId = null;      // document management
@@ -534,6 +580,9 @@
                 theme: t === 'dark' ? 'dark' : 'default',
                 securityLevel: 'strict',
                 logLevel: 'fatal',
+                // エラー時は例外のみ投げさせ、エラー図のDOM挿入を抑止。
+                // これにより parse→render の二重パースが不要になる（render の例外で構文検証を兼ねる）。
+                suppressErrorRendering: true,
                 fontFamily: '-apple-system, "Segoe UI", "Noto Sans JP", Roboto, sans-serif',
                 // htmlLabels はトップレベルで false にしないと有効にならない。
                 // false にすると <foreignObject>(HTML) ではなく純粋な <text> で描画され、
@@ -625,13 +674,16 @@
             });
         }
 
-        // 現在のエディタ内容を現在ドキュメントへ保存
+        // 現在のエディタ内容を現在ドキュメントへ保存。
+        // メモリ上は即時更新し、localStorage への書込は毎キーストロークを避けてデバウンス。
         function save() {
             const d = currentDoc();
             if (d) { d.code = code.value; d.updated = Date.now(); }
-            persistDocs();
+            clearTimeout(persistTimer);
+            persistTimer = setTimeout(persistDocs, 400);
             flashSaved();
         }
+        window.addEventListener('beforeunload', persistDocs); // 未書込分をフラッシュ
 
         // ドキュメントを切り替え／新規反映（現在の内容は保存済み前提で呼ぶ）
         function loadCurrentIntoEditor() {
@@ -662,13 +714,17 @@
         }
 
         /* ---------- Gutter (line numbers) & error line ---------- */
+        let gutterLines = 0, gutterErr = -1; // 再構築キャッシュ（行数・エラー行が不変なら再描画しない）
         function renderGutter() {
             const n = Math.max(1, code.value.split('\n').length);
-            let html = '';
-            for (let i = 1; i <= n; i++) {
-                html += (i === errorLine ? `<span class="err">${i}</span>` : i) + '\n';
+            if (n !== gutterLines || errorLine !== gutterErr) {
+                gutterLines = n; gutterErr = errorLine;
+                let html = '';
+                for (let i = 1; i <= n; i++) {
+                    html += (i === errorLine ? `<span class="err">${i}</span>` : i) + '\n';
+                }
+                gutter.innerHTML = html;
             }
-            gutter.innerHTML = html;
             gutter.scrollTop = code.scrollTop;
         }
 
@@ -796,7 +852,7 @@
          * ============================================================ */
         let renderSeq = 0;
 
-        async function render({ silent = false } = {}) {
+        async function render() {
             const src = code.value.trim();
             clearError();
 
@@ -811,28 +867,11 @@
             }
 
             const token = ++renderToken;
-            rendering = true;
             spinner.classList.add('show');
 
-            // 1) 構文検証は mermaid.parse に任せる（自前判定の誤検知を排除）
             try {
-                await mermaid.parse(src);
-            } catch (e) {
-                if (token !== renderToken) return;
-                rendering = false;
-                spinner.classList.remove('show');
-                const detail = (e && (e.str || e.message)) || '構文エラー';
-                let line = e && e.hash && e.hash.loc && e.hash.loc.first_line;
-                if (!line) { const m = /line (\d+)/i.exec(detail); if (m) line = +m[1]; }
-                setErrorLine(line || 0);
-                showError('構文エラー:\n' + detail);
-                setStatus('bad', '構文エラー' + (line ? `（${line}行目）` : ''));
-                svgBtn.disabled = pngBtn.disabled = copyImgBtn.disabled = true;
-                return;
-            }
-
-            // 2) レンダリング
-            try {
+                // render 内部で構文解析されるため parse を別途呼ばない（二重パース回避）。
+                // suppressErrorRendering:true なので構文エラー時は例外のみでエラー図は挿入されない。
                 const id = 'mmd-' + Date.now() + '-' + (++renderSeq);
                 const { svg } = await mermaid.render(id, src);
                 if (token !== renderToken) return; // 競合した古い描画は破棄
@@ -859,18 +898,20 @@
             } catch (e) {
                 if (token !== renderToken) return;
                 console.error('[render]', e);
-                showError('レンダリングエラー: ' + (e.message || '不明なエラー'));
-                setStatus('bad', 'エラー');
+                const detail = (e && (e.str || e.message)) || '不明なエラー';
+                let line = e && e.hash && e.hash.loc && e.hash.loc.first_line;
+                if (!line) { const m = /line (\d+)/i.exec(detail); if (m) line = +m[1]; }
+                setErrorLine(line || 0);
+                const isSyntax = !!line || /parse|syntax/i.test(detail);
+                showError((isSyntax ? '構文エラー:\n' : 'レンダリングエラー:\n') + detail);
+                setStatus('bad', isSyntax ? '構文エラー' + (line ? `（${line}行目）` : '') : 'エラー');
                 svgBtn.disabled = pngBtn.disabled = copyImgBtn.disabled = true;
             } finally {
                 // mermaid が body に残す一時要素を掃除
                 document.querySelectorAll('body > [id^="dmmd-"], body > [id^="mmd-"]').forEach(n => {
                     if (n !== fatal) n.remove();
                 });
-                if (token === renderToken) {
-                    rendering = false;
-                    spinner.classList.remove('show');
-                }
+                if (token === renderToken) spinner.classList.remove('show');
             }
         }
 
@@ -925,9 +966,12 @@
                 const img = new Image();
                 img.onload = () => {
                     try {
+                        // Canvas の実装上限（約16k px）を超えると無音で失敗するため、上限内に収める
+                        const MAX_DIM = 8192;
+                        const sf = Math.min(scaleFactor, MAX_DIM / naturalW, MAX_DIM / naturalH);
                         const canvas = document.createElement('canvas');
-                        canvas.width = Math.max(1, Math.round(naturalW * scaleFactor));
-                        canvas.height = Math.max(1, Math.round(naturalH * scaleFactor));
+                        canvas.width = Math.max(1, Math.round(naturalW * sf));
+                        canvas.height = Math.max(1, Math.round(naturalH * sf));
                         const ctx = canvas.getContext('2d');
                         ctx.fillStyle = theme === 'dark' ? '#1e1e1e' : '#ffffff';
                         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1095,28 +1139,14 @@
         /* ============================================================
          * Help
          * ============================================================ */
+        const helpDlg = $('helpDlg');
         $('helpBtn').onclick = () => {
-            alert([
-                'Mermaid図エディタ — 使い方',
-                '',
-                '【ショートカット】',
-                '  Ctrl/Cmd + Enter … レンダリング実行',
-                '  Tab … インデント挿入',
-                '  Shift + F … 全体表示',
-                '  マウスホイール … 拡大縮小',
-                '  ドラッグ … 図の移動（パン）',
-                '',
-                '【機能】',
-                '  ・複数ドキュメント管理（＋新規 / ✎名称変更 / 🗑削除、自動保存）',
-                '  ・行番号表示 & 構文エラー行のハイライト',
-                '  ・SVG / PNG（最大4x）書き出し',
-                '  ・画像をクリップボードへコピー',
-                '  ・🔗 共有リンク（コードをURLに埋め込み）',
-                '  ・📂/💾 .mmd ファイルの読込・保存',
-                '',
-                'Mermaid ' + (mermaid.version ? 'v' + (typeof mermaid.version === 'function' ? mermaid.version() : mermaid.version) : '11')
-            ].join('\n'));
+            const v = typeof mermaid.version === 'function' ? mermaid.version() : mermaid.version;
+            $('mmdVer').textContent = 'Mermaid v' + (v || MERMAID_VERSION);
+            helpDlg.showModal();
         };
+        $('helpClose').onclick = () => helpDlg.close();
+        helpDlg.addEventListener('click', e => { if (e.target === helpDlg) helpDlg.close(); }); // 背景クリックで閉じる
 
         /* ============================================================
          * Editor events
@@ -1135,7 +1165,7 @@
         code.addEventListener('input', () => {
             save(); updateMeta();
             clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => render({ silent: true }), 700);
+            debounceTimer = setTimeout(render, 700);
         });
 
         // 行番号ガター／エラーバンドをスクロールに追従
@@ -1170,13 +1200,18 @@
                 divider.setPointerCapture(e.pointerId);
                 document.body.style.userSelect = 'none';
             });
+            let fitQueued = false;
             divider.addEventListener('pointermove', e => {
                 if (!active) return;
                 const rect = main.getBoundingClientRect();
                 let pct = ((e.clientX - rect.left) / rect.width) * 100;
                 pct = Math.max(25, Math.min(75, pct));
                 editor.style.flex = `0 0 ${pct}%`;
-                if (output.firstChild) fitView();
+                // fitView はフレームごとに1回に間引く（pointermove毎の再計算を回避）
+                if (output.firstChild && !fitQueued) {
+                    fitQueued = true;
+                    requestAnimationFrame(() => { fitQueued = false; fitView(); });
+                }
             });
             divider.addEventListener('pointerup', e => {
                 active = false; divider.classList.remove('active');
