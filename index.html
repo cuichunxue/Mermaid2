@@ -89,6 +89,9 @@
         .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
         .status-pill.ok .dot { background: var(--success-fg); }
         .status-pill.bad .dot { background: var(--error-fg); }
+        .status-pill.warn .dot { background: var(--warn-fg); }
+        .status-pill.busy .dot { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+        @keyframes pulse { 50% { opacity: .3; } }
         .saved-badge { font-size: .72rem; color: var(--text-faint); opacity: 0; transition: opacity .25s; }
         .saved-badge.show { opacity: 1; }
 
@@ -106,7 +109,8 @@
             content: ''; position: absolute; inset: 0 2px; border-radius: 3px;
             background: var(--border); transition: background .15s;
         }
-        .divider:hover::after, .divider.active::after { background: var(--accent); }
+        .divider:hover::after, .divider.active::after, .divider:focus-visible::after { background: var(--accent); }
+        .divider:focus-visible { outline: none; }
 
         /* ---------- Toolbars ---------- */
         .toolbar {
@@ -203,6 +207,12 @@
         }
         .toast.show { opacity: .96; transform: translateY(0); }
         .toast.err { background: var(--error-fg); color: #fff; }
+        .toast.has-act { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
+        .toast .act {
+            background: transparent; border: 1px solid currentColor; color: inherit; border-radius: 5px;
+            padding: 2px 9px; font-size: .78rem; cursor: pointer; opacity: .9;
+        }
+        .toast .act:hover { opacity: 1; }
 
         /* ---------- Preview viewport ---------- */
         .preview-area { flex: 1; position: relative; overflow: hidden; min-height: 0; background:
@@ -211,10 +221,30 @@
         .viewport.grabbable { cursor: grab; }
         .viewport.grabbing { cursor: grabbing; }
         #mermaidOutput {
-            background: #ffffff; border: 1px solid var(--border); border-radius: 8px;
+            /* 図の背景は図テーマに追従（ダーク図を白カードに載せると線が見えなくなるため）。PNG出力も同じ色を使う */
+            background: var(--diagram-bg, #ffffff); border: 1px solid var(--border); border-radius: 8px;
             padding: 18px; box-shadow: var(--shadow); display: inline-block; line-height: 0;
+            transition: opacity .15s, filter .15s;
         }
         #mermaidOutput svg { display: block; }
+        /* 構文エラー中は「前回成功した図」を薄く残し、最新でないことを明示する */
+        #mermaidOutput.stale { opacity: .38; filter: grayscale(.6); }
+        .stale-badge {
+            position: absolute; top: 12px; right: 12px; z-index: 4; display: none;
+            font-size: .72rem; color: var(--warn-fg); background: var(--warn-bg);
+            border: 1px solid var(--warn-bd); border-radius: 999px; padding: 3px 10px;
+        }
+        .stale-badge.show { display: block; }
+        .load-fail {
+            position: absolute; inset: 0; z-index: 6; display: none; flex-direction: column;
+            align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center;
+            background: var(--panel-2);
+        }
+        .load-fail.show { display: flex; }
+        .load-fail h2 { font-size: 1rem; }
+        .load-fail p { color: var(--text-soft); font-size: .84rem; max-width: 420px; line-height: 1.6; }
+        .msg.warning ul { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+        .msg.warning .ln { font-family: var(--mono); font-weight: 600; margin-right: 6px; cursor: pointer; text-decoration: underline dotted; }
         .preview-empty {
             position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
             color: var(--text-faint); font-size: .9rem; text-align: center; padding: 24px; pointer-events: none;
@@ -228,16 +258,6 @@
         .spinner.show { display: flex; }
         .spinner i { width: 12px; height: 12px; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* fatal load overlay */
-        .fatal {
-            position: fixed; inset: 0; background: var(--bg); z-index: 200;
-            display: none; flex-direction: column; align-items: center; justify-content: center;
-            gap: 16px; text-align: center; padding: 24px;
-        }
-        .fatal.show { display: flex; }
-        .fatal h2 { font-size: 1.1rem; }
-        .fatal p { color: var(--text-soft); font-size: .88rem; max-width: 440px; line-height: 1.6; }
 
         /* help dialog */
         dialog.help {
@@ -265,7 +285,7 @@
         /* ---------- Responsive ---------- */
         @media (max-width: 860px) {
             .main { flex-direction: column; }
-            .editor-section { flex: 0 0 auto; height: 45vh; border-right: none; border-bottom: 1px solid var(--border); }
+            .editor-section { flex: 0 0 auto !important; height: 45vh; border-right: none; border-bottom: 1px solid var(--border); }
             .preview-section { flex: 1; }
             .divider { display: none; }
             .header-right .status-pill { display: none; }
@@ -282,10 +302,10 @@
             <h1>Mermaid図エディタ</h1>
         </div>
         <div class="header-right">
-            <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">準備中…</span></span>
+            <span class="status-pill busy" id="statusPill" role="status" aria-live="polite"><span class="dot"></span><span id="statusText">ライブラリ読込中…</span></span>
             <span class="saved-badge" id="savedBadge">保存しました</span>
             <button class="btn icon-only" id="themeBtn" title="ライト/ダーク切替" aria-label="テーマ切替"><span class="ico" id="themeIco">🌙</span></button>
-            <button class="btn icon-only" id="helpBtn" title="ショートカット・使い方" aria-label="ヘルプ"><span class="ico">?</span></button>
+            <button class="btn icon-only" id="helpBtn" title="ショートカット・使い方 (F1)" aria-label="ヘルプ"><span class="ico">?</span></button>
         </div>
     </header>
 
@@ -306,25 +326,27 @@
                     <button class="btn icon-only" id="importBtn" title="ファイルを開く (.mmd)" aria-label="ファイルを開く"><span class="ico">📂</span></button>
                     <button class="btn icon-only" id="exportMmdBtn" title="ファイルを保存 (.mmd)" aria-label="ファイルを保存"><span class="ico">💾</span></button>
                     <button class="btn icon-only" id="deleteDocBtn" title="ドキュメントを削除" aria-label="ドキュメントを削除"><span class="ico">🗑</span></button>
-                    <input type="file" id="fileInput" accept=".mmd,.txt,text/plain" class="hidden">
+                    <input type="file" id="fileInput" accept=".mmd,.mermaid,.md,.txt,text/plain" class="hidden">
                 </div>
             </div>
             <div class="editor-wrap">
                 <div class="gutter" id="gutter" aria-hidden="true"></div>
                 <div class="code-area">
                     <div class="underlay"><div class="errband" id="errband"></div></div>
-                    <textarea id="code" wrap="off" spellcheck="false" autocapitalize="off" autocorrect="off"
+                    <textarea id="code" wrap="off" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off"
+                        aria-label="Mermaidコード" aria-describedby="editorHint"
                         placeholder="Mermaidコードを入力… 例:&#10;graph TD&#10;  A[開始] --> B[終了]"></textarea>
                 </div>
             </div>
             <div class="editor-status">
                 <span id="typeLabel">—</span>
                 <span class="sep"></span>
+                <span id="editorHint">Esc→Tab でフォーカス移動</span>
                 <span id="countLabel">0 行 / 0 文字</span>
             </div>
         </section>
 
-        <div class="divider" id="divider" role="separator" aria-orientation="vertical" title="ドラッグで幅を調整"></div>
+        <div class="divider" id="divider" role="separator" tabindex="0" aria-orientation="vertical" aria-label="エディタとプレビューの境界" aria-valuemin="25" aria-valuemax="75" aria-valuenow="46" title="ドラッグ／矢印キーで幅を調整（ダブルクリックで初期化）"></div>
 
         <section class="preview-section" aria-label="プレビュー">
             <div class="toolbar">
@@ -332,10 +354,18 @@
                     <span class="toolbar-label">プレビュー</span>
                     <div class="zoom-group" role="group" aria-label="ズーム">
                         <button class="zbtn" id="zoomOut" title="縮小" aria-label="縮小">−</button>
-                        <span class="zoom-level" id="zoomLevel">100%</span>
+                        <span class="zoom-level" id="zoomLevel" title="ダブルクリックで100%">100%</span>
                         <button class="zbtn" id="zoomIn" title="拡大" aria-label="拡大">+</button>
                         <button class="zbtn" id="zoomFit" title="全体表示 (Shift+F)" aria-label="全体表示">⤢</button>
                     </div>
+                    <select class="control" id="dthemeSelect" title="図のテーマ" aria-label="図のテーマ">
+                        <option value="auto">図: 自動</option>
+                        <option value="default">図: default</option>
+                        <option value="neutral">図: neutral</option>
+                        <option value="forest">図: forest</option>
+                        <option value="dark">図: dark</option>
+                        <option value="base">図: base</option>
+                    </select>
                 </div>
                 <div class="toolbar-group">
                     <select class="control" id="scaleSelect" title="PNG出力解像度" aria-label="PNG出力解像度">
@@ -350,12 +380,19 @@
                     <button class="btn icon-only" id="shareBtn" title="共有リンクをコピー" aria-label="共有リンクをコピー"><span class="ico">🔗</span></button>
                 </div>
             </div>
-            <div class="msg error" id="error" role="alert"></div>
+            <div class="msg error" id="error" role="status" aria-live="polite"></div>
+            <div class="msg warning" id="warn" role="status" aria-live="polite"></div>
             <div class="preview-area" id="previewArea">
                 <div class="spinner" id="spinner"><i></i>レンダリング中…</div>
+                <div class="stale-badge" id="staleBadge">前回成功した図を表示中</div>
                 <div class="preview-empty" id="emptyState">コードを入力するとここにプレビューが表示されます</div>
                 <div class="viewport" id="viewport">
                     <div id="mermaidOutput"></div>
+                </div>
+                <div class="load-fail" id="loadFail" role="alert">
+                    <h2>Mermaid ライブラリを読み込めませんでした</h2>
+                    <p>インターネット接続を確認してください。社内ネットワーク等でCDN（jsdelivr / unpkg / esm.sh）がブロックされている場合は管理者に許可を依頼してください。<br>編集・保存・.mmd書き出しはこのまま利用できます。</p>
+                    <button class="btn primary" id="retryLoadBtn">再試行</button>
                 </div>
             </div>
         </section>
@@ -366,72 +403,50 @@
         <h3>ショートカット</h3>
         <ul>
             <li><kbd>Ctrl/Cmd + Enter</kbd> レンダリング実行</li>
-            <li><kbd>Tab</kbd> インデント挿入</li>
+            <li><kbd>Ctrl/Cmd + S</kbd> 保存（自動保存を即時反映）</li>
+            <li><kbd>Tab</kbd> / <kbd>Shift + Tab</kbd> インデント／解除（複数行可）</li>
+            <li><kbd>Ctrl/Cmd + /</kbd> 行コメント切替（%%）</li>
+            <li><kbd>Esc</kbd> → <kbd>Tab</kbd> エディタからフォーカスを移動</li>
             <li><kbd>Shift + F</kbd> 全体表示</li>
             <li><kbd>ホイール</kbd> 拡大縮小　<kbd>ドラッグ</kbd> 図の移動</li>
         </ul>
         <h3>機能</h3>
         <ul>
-            <li>複数ドキュメント管理（＋新規 / ✎名称変更 / 🗑削除、自動保存）</li>
-            <li>行番号表示と構文エラー行のハイライト</li>
-            <li>SVG / PNG（最大4x・白背景）書き出し</li>
-            <li>画像をクリップボードへコピー</li>
-            <li>🔗 共有リンク（コードをURLに埋め込み）</li>
+            <li>複数ドキュメント管理（自動保存・複数タブ間で同期・削除は元に戻せる）</li>
+            <li>行番号表示と構文エラー行のハイライト、ジャーニー図の記述チェック</li>
+            <li>SVG / PNG（最大4x）書き出し・画像のクリップボードコピー</li>
+            <li>🔗 共有リンク（コードを圧縮してURLに埋め込み）</li>
             <li>📂 / 💾 .mmd ファイルの読込・保存</li>
         </ul>
         <p class="ver" id="mmdVer"></p>
         <div class="foot"><button class="btn primary" id="helpClose">閉じる</button></div>
     </dialog>
 
-    <div class="toast-host" id="toastHost"></div>
-
-    <div class="fatal" id="fatal">
-        <h2>Mermaid ライブラリを読み込めませんでした</h2>
-        <p id="fatalMsg">インターネット接続を確認して再読み込みしてください。社内ネットワークなどでCDN（jsdelivr / unpkg）がブロックされている場合は、管理者に許可を依頼してください。</p>
-        <button class="btn primary" onclick="location.reload()">再読み込み</button>
-    </div>
+    <div class="toast-host" id="toastHost" aria-live="polite"></div>
 
     <script type="module">
         'use strict';
 
         /* ============================================================
-         * Mermaid loader — 複数CDNフォールバック + タイムアウト
+         * 起動方針
+         *  エディタ・ドキュメント管理は Mermaid の読込を待たずに即座に動かす。
+         *  （CDN が遅い／ブロックされていても、保存済みコードの閲覧・編集・.mmd 書き出しは可能）
          * ============================================================ */
-        // 正確なバージョンにピン留め（レンジ指定だと将来の更新で挙動が変わり得るため）
-        const MERMAID_VERSION = '11.16.0';
+        const MERMAID_VERSION = '11.16.0';   // 正確なバージョンにピン留め（挙動を固定するため）
         const CDN_SOURCES = [
             `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs`,
             `https://unpkg.com/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs`,
             `https://esm.sh/mermaid@${MERMAID_VERSION}`
         ];
-
-        function withTimeout(promise, ms) {
-            return Promise.race([
-                promise,
-                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))
-            ]);
-        }
-
-        async function loadMermaid() {
-            for (const url of CDN_SOURCES) {
-                try {
-                    const mod = await withTimeout(import(/* @vite-ignore */ url), 12000);
-                    if (mod && mod.default) return mod.default;
-                } catch (e) {
-                    console.warn('[mermaid] CDN読込失敗:', url, e.message);
-                }
-            }
-            return null;
-        }
+        const CDN_HEDGE_MS = 4000;      // 応答がなければ次の CDN も並行して試す
+        const CDN_TIMEOUT_MS = 20000;
+        const MAX_TEXT = 500000;        // mermaid 既定(5万字)では中規模図でも「Maximum text size」図に差し替わるため拡張
+        const MAX_EDGES = 3000;         // 既定500では実務的なフローチャートで上限に達する
+        const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+        const SHARE_WARN_LEN = 8000;    // これを超えるURLはチャット等で切れる可能性がある
+        const UNDO_MS = 6000;
 
         const $ = id => document.getElementById(id);
-        const fatal = $('fatal');
-
-        const mermaid = await loadMermaid();
-        if (!mermaid) {
-            fatal.classList.add('show');
-            throw new Error('Mermaid library failed to load from all CDNs');
-        }
 
         /* ============================================================
          * Templates
@@ -504,13 +519,19 @@
     checkout main
     merge develop`],
             journey: ['ユーザージャーニー', `journey
-    title ユーザーの1日
-    section 朝
-        起床: 3: ユーザー
-        朝食: 5: ユーザー
-    section 昼
-        仕事: 3: ユーザー
-        昼食: 4: ユーザー`],
+    title ECサイトの購入体験
+    section 認知
+        広告を見る: 3: 顧客
+        口コミを読む: 4: 顧客
+    section 検討
+        商品を比較: 3: 顧客
+        問い合わせ: 2: 顧客, サポート
+    section 購入
+        カートに追加: 4: 顧客
+        決済: 2: 顧客, 決済代行
+    section 利用
+        商品が届く: 5: 顧客, 配送
+        レビュー投稿: 4: 顧客`],
             mindmap: ['マインドマップ', `mindmap
   root((アイデア))
     企画
@@ -537,6 +558,9 @@
     項目B: [0.3, 0.2]`]
         };
 
+        // ジャーニー図のアクター色（既定6色は蛍光色で判別しにくく、7人目から重複するため Tableau10 に置換）
+        const ACTOR_COLOURS = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac'];
+
         /* ============================================================
          * Elements & state
          * ============================================================ */
@@ -548,8 +572,11 @@
               viewport = $('viewport'),
               previewArea = $('previewArea'),
               errorBox = $('error'),
+              warnBox = $('warn'),
               spinner = $('spinner'),
               emptyState = $('emptyState'),
+              staleBadge = $('staleBadge'),
+              loadFail = $('loadFail'),
               zoomLevel = $('zoomLevel'),
               savedBadge = $('savedBadge'),
               statusPill = $('statusPill'),
@@ -558,110 +585,196 @@
               countLabel = $('countLabel'),
               svgBtn = $('svgBtn'),
               pngBtn = $('pngBtn'),
-              copyImgBtn = $('copyImgBtn');
+              copyImgBtn = $('copyImgBtn'),
+              dthemeSelect = $('dthemeSelect');
 
-        const LS_CODE = 'mermaid_code', LS_THEME = 'mermaid_theme',
-              LS_DOCS = 'mermaid_docs', LS_CUR = 'mermaid_current';
+        const LS_CODE = 'mermaid_code', LS_THEME = 'mermaid_theme', LS_DTHEME = 'mermaid_dtheme',
+              LS_DOCS = 'mermaid_docs', LS_CUR = 'mermaid_current', LS_TOMB = 'mermaid_tombstones',
+              LS_SPLIT = 'mermaid_split';
 
-        let scale = 1, tx = 0, ty = 0;       // viewport transform
-        let naturalW = 0, naturalH = 0;      // rendered svg natural size
-        let renderToken = 0;
+        let mermaid = null;                   // 読込完了までは null
+        let scale = 1, tx = 0, ty = 0;        // viewport transform
+        let autoFit = true;                   // ユーザーがズーム/パンしたら false（再描画で視点を奪わない）
+        let naturalW = 0, naturalH = 0;       // rendered svg natural size
+        let renderToken = 0, renderSeq = 0, hasDiagram = false;
         let saveTimer, debounceTimer, persistTimer;
-        let theme = localStorage.getItem(LS_THEME) || 'light';
         let errorLine = 0;                    // 1-based line with a syntax error (0 = none)
         let docs = [], currentId = null;      // document management
+        let tombstones = {};                  // 削除済み id -> 削除時刻（複数タブでの復活防止）
+        let persistFailed = false;
 
         /* ============================================================
-         * Mermaid config
+         * Storage — 利用不可（プライベートモード/無効化）や容量超過でも落ちない
          * ============================================================ */
-        function mermaidConfig(t) {
+        const store = (() => {
+            let ok = true;
+            try { const k = '__mmd_probe'; localStorage.setItem(k, '1'); localStorage.removeItem(k); }
+            catch (_) { ok = false; }
+            const mem = new Map();
             return {
-                startOnLoad: false,
-                theme: t === 'dark' ? 'dark' : 'default',
-                securityLevel: 'strict',
-                logLevel: 'fatal',
-                // エラー時は例外のみ投げさせ、エラー図のDOM挿入を抑止。
-                // これにより parse→render の二重パースが不要になる（render の例外で構文検証を兼ねる）。
-                suppressErrorRendering: true,
-                fontFamily: '-apple-system, "Segoe UI", "Noto Sans JP", Roboto, sans-serif',
-                // htmlLabels はトップレベルで false にしないと有効にならない。
-                // false にすると <foreignObject>(HTML) ではなく純粋な <text> で描画され、
-                // canvas へのラスタライズ時に「Tainted canvas」エラーにならず PNG 出力が確実に成功する。
-                htmlLabels: false,
-                // useMaxWidth:false -> SVGに実寸の width/height が付く（パン/ズーム/PNG出力に必須）
-                flowchart: { useMaxWidth: false, htmlLabels: false, curve: 'basis' },
-                sequence: { useMaxWidth: false, wrap: true },
-                gantt: { useMaxWidth: false },
-                class: { useMaxWidth: false, htmlLabels: false },
-                state: { useMaxWidth: false },
-                er: { useMaxWidth: false },
-                journey: { useMaxWidth: false },
-                pie: { useMaxWidth: false },
-                quadrantChart: { useMaxWidth: false },
-                timeline: { useMaxWidth: false },
-                mindmap: { useMaxWidth: false }
+                available: ok,
+                get(k) { if (!ok) return mem.has(k) ? mem.get(k) : null; try { return localStorage.getItem(k); } catch (_) { return null; } },
+                set(k, v) {   // 成功時 true、失敗時は例外オブジェクト
+                    if (!ok) { mem.set(k, v); return true; }
+                    try { localStorage.setItem(k, v); return true; } catch (e) { return e; }
+                }
             };
+        })();
+
+        function systemTheme() {
+            return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
-        mermaid.initialize(mermaidConfig(theme));
+        let theme = store.get(LS_THEME);
+        if (theme !== 'dark' && theme !== 'light') theme = systemTheme();
+        let dtheme = store.get(LS_DTHEME) || 'auto';
+        if (![...dthemeSelect.options].some(o => o.value === dtheme)) dtheme = 'auto';
 
         /* ============================================================
          * UI helpers
          * ============================================================ */
-        function toast(text, isErr) {
+        function toast(text, isErr, action) {
             const host = $('toastHost');
             const el = document.createElement('div');
-            el.className = 'toast' + (isErr ? ' err' : '');
-            el.textContent = text;
+            el.className = 'toast' + (isErr ? ' err' : '') + (action ? ' has-act' : '');
+            const span = document.createElement('span');
+            span.textContent = text;
+            el.appendChild(span);
+            const close = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); };
+            if (action) {
+                const b = document.createElement('button');
+                b.className = 'act'; b.textContent = action.label;
+                b.onclick = () => { close(); action.run(); };
+                el.appendChild(b);
+            }
             host.appendChild(el);
             requestAnimationFrame(() => el.classList.add('show'));
-            setTimeout(() => {
-                el.classList.remove('show');
-                setTimeout(() => el.remove(), 250);
-            }, isErr ? 4000 : 2200);
+            setTimeout(close, action ? UNDO_MS : isErr ? 4500 : 2200);
         }
 
         function setStatus(state, text) {
-            statusPill.classList.remove('ok', 'bad');
-            if (state === 'ok') statusPill.classList.add('ok');
-            else if (state === 'bad') statusPill.classList.add('bad');
+            statusPill.classList.remove('ok', 'bad', 'warn', 'busy');
+            if (state) statusPill.classList.add(state);
             statusText.textContent = text;
         }
 
-        function showError(text) {
-            errorBox.textContent = text;
-            errorBox.classList.add('show');
-        }
-        function clearError() {
-            errorBox.classList.remove('show');
+        function showError(text) { errorBox.textContent = text; errorBox.classList.add('show'); }
+        function clearError() { errorBox.classList.remove('show'); errorBox.textContent = ''; }
+
+        function showWarnings(list) {
+            warnBox.innerHTML = '';
+            if (!list.length) { warnBox.classList.remove('show'); return; }
+            const ul = document.createElement('ul');
+            list.slice(0, 5).forEach(w => {
+                const li = document.createElement('li');
+                li.append('⚠ ');
+                if (w.line) {
+                    const ln = document.createElement('span');
+                    ln.className = 'ln'; ln.textContent = w.line + '行目';
+                    ln.title = 'この行へ移動';
+                    ln.onclick = () => gotoLine(w.line);
+                    li.appendChild(ln);
+                }
+                li.append(w.msg);
+                ul.appendChild(li);
+            });
+            if (list.length > 5) { const li = document.createElement('li'); li.textContent = `…他 ${list.length - 5} 件`; ul.appendChild(li); }
+            warnBox.appendChild(ul);
+            warnBox.classList.add('show');
         }
 
         function flashSaved() {
+            if (persistFailed) return;
             savedBadge.classList.add('show');
             clearTimeout(saveTimer);
             saveTimer = setTimeout(() => savedBadge.classList.remove('show'), 1400);
         }
 
-        /* ---------- Document management ---------- */
+        /* ============================================================
+         * Document management（タブ間マージ・トゥームストーン付き）
+         * ============================================================ */
         const uid = () => 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const currentDoc = () => docs.find(d => d.id === currentId);
 
-        function persistDocs() {
+        // 壊れた/古い形式の保存データを安全な形に正規化（null要素や欠損フィールドで起動不能にならないように）
+        function sanitizeDocs(raw) {
+            if (!Array.isArray(raw)) return [];
+            const seen = new Set(), out = [];
+            raw.forEach((d, i) => {
+                if (!d || typeof d !== 'object') return;
+                let id = typeof d.id === 'string' && d.id ? d.id : uid() + i;
+                if (seen.has(id)) id = uid() + i;
+                seen.add(id);
+                out.push({
+                    id,
+                    name: (d.name == null || String(d.name).trim() === '') ? '無題' : String(d.name).slice(0, 60),
+                    code: typeof d.code === 'string' ? d.code : (d.code == null ? '' : String(d.code)),
+                    updated: Number.isFinite(d.updated) ? d.updated : 0
+                });
+            });
+            return out;
+        }
+        function readStoredDocs() {
+            try { return sanitizeDocs(JSON.parse(store.get(LS_DOCS) || '[]')); } catch (_) { return []; }
+        }
+        function readTombstones() {
             try {
-                localStorage.setItem(LS_DOCS, JSON.stringify(docs));
-                localStorage.setItem(LS_CUR, currentId);
-            } catch (e) { /* quota/private mode — silent */ }
+                const t = JSON.parse(store.get(LS_TOMB) || '{}');
+                if (!t || typeof t !== 'object' || Array.isArray(t)) return {};
+                const limit = Date.now() - 30 * 864e5;   // 30日より古いものは破棄
+                const out = {};
+                for (const [k, v] of Object.entries(t)) if (Number.isFinite(v) && v > limit) out[k] = v;
+                return out;
+            } catch (_) { return {}; }
+        }
+
+        // id ごとに更新時刻が新しい方を採用。削除済み（トゥームストーンより古い）ものは除外。
+        function mergeDocs(local, remote, tomb) {
+            const byId = new Map();
+            [...remote, ...local].forEach(d => {
+                const cur = byId.get(d.id);
+                if (!cur || d.updated > cur.updated) byId.set(d.id, d);
+            });
+            const order = [];
+            const push = d => { if (!order.includes(d.id)) order.push(d.id); };
+            local.forEach(push); remote.forEach(push);
+            return order.map(id => byId.get(id)).filter(d => !(tomb[d.id] && tomb[d.id] >= d.updated));
+        }
+
+        function persistDocs() {
+            clearTimeout(persistTimer);
+            // 他タブの変更を取り込んでから書く（全体上書きによる消失を防ぐ）
+            tombstones = Object.assign(readTombstones(), tombstones);
+            const merged = mergeDocs(docs, readStoredDocs(), tombstones);
+            if (merged.length) docs = merged;
+            const r1 = store.set(LS_DOCS, JSON.stringify(docs));
+            store.set(LS_TOMB, JSON.stringify(tombstones));
+            if (currentId) store.set(LS_CUR, currentId);
+            if (r1 !== true) {
+                if (!persistFailed) {
+                    persistFailed = true;
+                    toast('保存に失敗しました（ブラウザの保存容量を超えています）。不要なドキュメントを削除するか 💾 で書き出してください', true);
+                }
+                setStatus('warn', '未保存');
+            } else if (persistFailed) {
+                persistFailed = false;
+                toast('保存できました');
+                setStatus('', '保存済み');
+            }
+            return r1 === true;
         }
 
         function loadDocs() {
-            try { docs = JSON.parse(localStorage.getItem(LS_DOCS) || '[]'); } catch (_) { docs = []; }
-            if (!Array.isArray(docs) || !docs.length) {
+            docs = readStoredDocs();
+            tombstones = readTombstones();
+            if (!docs.length) {
                 // 旧バージョンの単一コードを移行、なければ既定テンプレート
-                let legacy = null;
-                try { legacy = localStorage.getItem(LS_CODE); } catch (_) {}
+                const legacy = store.get(LS_CODE);
                 docs = [{ id: uid(), name: '無題1', code: legacy || TEMPLATES.flowchart[1], updated: Date.now() }];
             }
-            currentId = localStorage.getItem(LS_CUR);
+            currentId = store.get(LS_CUR);
             if (!currentDoc()) currentId = docs[0].id;
+            // 初回は既定ドキュメントを即保存（同時に開いた別タブが別の「無題1」を作って重複しないように）
+            if (!store.get(LS_DOCS)) persistDocs();
         }
 
         function refreshDocSelect() {
@@ -674,22 +787,57 @@
             });
         }
 
-        // 現在のエディタ内容を現在ドキュメントへ保存。
-        // メモリ上は即時更新し、localStorage への書込は毎キーストロークを避けてデバウンス。
+        // 現在のエディタ内容を現在ドキュメントへ反映（変更がなければ何もしない）。
+        // localStorage への書込は毎キーストロークを避けてデバウンス。
         function save() {
             const d = currentDoc();
-            if (d) { d.code = code.value; d.updated = Date.now(); }
+            if (!d || d.code === code.value) return;
+            d.code = code.value; d.updated = Date.now();
             clearTimeout(persistTimer);
             persistTimer = setTimeout(persistDocs, 400);
             flashSaved();
         }
-        window.addEventListener('beforeunload', persistDocs); // 未書込分をフラッシュ
+        // 未書込分をフラッシュ（モバイルでは beforeunload が来ないことがあるため pagehide/visibilitychange も）
+        const flush = () => { save(); persistDocs(); };
+        window.addEventListener('pagehide', flush);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+        window.addEventListener('beforeunload', e => {
+            flush();
+            if (persistFailed) { e.preventDefault(); e.returnValue = ''; }   // 保存できていない内容がある
+        });
+
+        // 他タブでの変更を反映
+        window.addEventListener('storage', e => {
+            if (e.key !== LS_DOCS && e.key !== LS_TOMB) return;
+            save();
+            tombstones = Object.assign(readTombstones(), tombstones);
+            const before = currentDoc();
+            const merged = mergeDocs(docs, readStoredDocs(), tombstones);
+            if (!merged.length) return;
+            docs = merged;
+            if (!currentDoc()) {           // 表示中のドキュメントが他タブで削除された
+                currentId = docs[0].id;
+                loadCurrentIntoEditor(true);
+                toast('表示中のドキュメントは別のタブで削除されました');
+                return;
+            }
+            const now = currentDoc();
+            if (before && now.code !== code.value) {   // 他タブでより新しく編集された
+                const s = code.selectionStart, en = code.selectionEnd;
+                code.value = now.code;
+                code.setSelectionRange(Math.min(s, code.value.length), Math.min(en, code.value.length));
+                updateMeta(); scheduleRender(150);
+            }
+            refreshDocSelect();
+        });
 
         // ドキュメントを切り替え／新規反映（現在の内容は保存済み前提で呼ぶ）
-        function loadCurrentIntoEditor() {
+        function loadCurrentIntoEditor(resetView) {
             const d = currentDoc();
             code.value = d ? d.code : '';
+            code.scrollTop = 0; code.scrollLeft = 0;
             errorLine = 0;
+            if (resetView) autoFit = true;
             refreshDocSelect();
             updateMeta();
             render();
@@ -699,7 +847,7 @@
             save();
             currentId = id;
             persistDocs();
-            loadCurrentIntoEditor();
+            loadCurrentIntoEditor(true);
         }
 
         function createDoc(name, codeVal, focusEditor) {
@@ -708,30 +856,41 @@
             docs.push(d);
             currentId = d.id;
             persistDocs();
-            loadCurrentIntoEditor();
+            loadCurrentIntoEditor(true);
             if (focusEditor) code.focus();
             return d;
         }
 
-        /* ---------- Gutter (line numbers) & error line ---------- */
+        function uniqueName(base) {
+            const names = new Set(docs.map(d => d.name));
+            if (!names.has(base)) return base;
+            let n = 2;
+            while (names.has(`${base} (${n})`)) n++;
+            return `${base} (${n})`;
+        }
+
+        /* ============================================================
+         * Editor: gutter / error line / meta
+         * ============================================================ */
         let gutterLines = 0, gutterErr = -1; // 再構築キャッシュ（行数・エラー行が不変なら再描画しない）
+        function lineCount(s) { let n = 1; for (let i = s.indexOf('\n'); i !== -1; i = s.indexOf('\n', i + 1)) n++; return n; }
+
         function renderGutter() {
-            const n = Math.max(1, code.value.split('\n').length);
+            const n = lineCount(code.value);
             if (n !== gutterLines || errorLine !== gutterErr) {
                 gutterLines = n; gutterErr = errorLine;
-                let html = '';
-                for (let i = 1; i <= n; i++) {
-                    html += (i === errorLine ? `<span class="err">${i}</span>` : i) + '\n';
-                }
-                gutter.innerHTML = html;
+                const parts = new Array(n);
+                for (let i = 1; i <= n; i++) parts[i - 1] = i === errorLine ? `<span class="err">${i}</span>` : i;
+                gutter.innerHTML = parts.join('\n') + '\n';
             }
             gutter.scrollTop = code.scrollTop;
         }
 
         function updateErrBand() {
             if (errorLine > 0) {
-                const lh = parseFloat(getComputedStyle(code).lineHeight) || 21;
-                const pt = parseFloat(getComputedStyle(code).paddingTop) || 14;
+                const cs = getComputedStyle(code);
+                const lh = parseFloat(cs.lineHeight) || 21;
+                const pt = parseFloat(cs.paddingTop) || 14;
                 errband.style.display = 'block';
                 errband.style.top = (pt + (errorLine - 1) * lh - code.scrollTop) + 'px';
             } else {
@@ -745,32 +904,138 @@
             updateErrBand();
         }
 
-        // 先頭の frontmatter / ディレクティブ / コメントを除いた最初の語で図種を推定（表示用のみ）
+        function gotoLine(line) {
+            const lines = code.value.split('\n');
+            let pos = 0;
+            for (let i = 0; i < Math.min(line - 1, lines.length); i++) pos += lines[i].length + 1;
+            code.focus();
+            code.setSelectionRange(pos, pos + (lines[line - 1] || '').length);
+            const lh = parseFloat(getComputedStyle(code).lineHeight) || 21;
+            code.scrollTop = Math.max(0, (line - 3) * lh);
+        }
+
+        // 先頭の frontmatter / ディレクティブ / コメントを除いた最初の語で図種を推定（表示・チェック用）
         function detectType(src) {
-            let s = src.replace(/^\s*---[\s\S]*?---\s*/m, '');       // YAML frontmatter
-            const lines = s.split('\n').map(l => l.trim())
-                .filter(l => l && !l.startsWith('%%'));
-            if (!lines.length) return '';
-            const first = lines[0].toLowerCase();
-            const map = {
-                'graph': 'flowchart', 'flowchart': 'flowchart', 'sequencediagram': 'sequence',
-                'classdiagram': 'class', 'statediagram': 'state', 'erdiagram': 'ER',
-                'gantt': 'gantt', 'pie': 'pie', 'gitgraph': 'git', 'journey': 'journey',
-                'mindmap': 'mindmap', 'timeline': 'timeline', 'quadrantchart': 'quadrant',
-                'requirementdiagram': 'requirement', 'c4context': 'C4', 'sankey': 'sankey',
-                'xychart': 'xychart', 'block': 'block'
-            };
-            for (const k in map) if (first.startsWith(k)) return map[k];
-            return first.split(/\s/)[0];
+            const s = src.replace(/^\s*---[\s\S]*?\n---[^\n]*\n?/, '').replace(/%%\{[\s\S]*?\}%%/g, '');
+            const first = s.split('\n').map(l => l.trim()).find(l => l && !l.startsWith('%%'));
+            if (!first) return '';
+            const f = first.toLowerCase();
+            const map = [
+                ['graph', 'flowchart'], ['flowchart', 'flowchart'], ['sequencediagram', 'sequence'],
+                ['classdiagram', 'class'], ['statediagram', 'state'], ['erdiagram', 'ER'],
+                ['gantt', 'gantt'], ['pie', 'pie'], ['gitgraph', 'git'], ['journey', 'journey'],
+                ['mindmap', 'mindmap'], ['timeline', 'timeline'], ['quadrantchart', 'quadrant'],
+                ['requirementdiagram', 'requirement'], ['c4', 'C4'], ['sankey', 'sankey'],
+                ['xychart', 'xychart'], ['block', 'block'], ['packet', 'packet'],
+                ['architecture', 'architecture'], ['kanban', 'kanban'], ['radar', 'radar']
+            ];
+            for (const [k, v] of map) if (f.startsWith(k)) return v;
+            return f.split(/\s/)[0].slice(0, 24);
         }
 
         function updateMeta() {
             const v = code.value;
-            const lines = v ? v.split('\n').length : 0;
-            countLabel.textContent = `${lines} 行 / ${v.length} 文字`;
+            countLabel.textContent = `${v ? lineCount(v) : 0} 行 / ${v.length} 文字`;
             const t = detectType(v);
             typeLabel.textContent = t ? `種別: ${t}` : '—';
             renderGutter();
+        }
+
+        /* ============================================================
+         * エラー行番号の補正
+         *  mermaid は解析前に frontmatter・%%{init}%% ディレクティブ・%% コメント行・先頭空白を
+         *  取り除くため、報告される行番号は元のコードとずれる。同じ前処理を再現して元の行へ戻す。
+         *  （mermaid 11 の preprocessDiagram / cleanupComments と同じ正規表現）
+         * ============================================================ */
+        const RE_FRONTMATTER = /^([^\S\n\r]*)-{3}\s*[\n\r](.*?)[\n\r]\1-{3}\s*[\n\r]+/s;
+        const RE_DIRECTIVE = /%{2}{\s*(?:(\w+)\s*:|(\w+))\s*(?:(\w+)|((?:(?!}%{2}).|\r?\n)*))?\s*(?:}%{2})?/gi;
+        const RE_COMMENT = /^\s*%%(?!{)[^\n]+\n?/gm;
+
+        function buildLineMap(text) {
+            let map = text.split('\n').map((_, i) => i + 1);   // 処理後の行 -> 元の行
+            const nl = s => { let n = 0; for (let i = s.indexOf('\n'); i !== -1; i = s.indexOf('\n', i + 1)) n++; return n; };
+            const strip = re => {
+                const ms = [];
+                if (re.global) { for (const m of text.matchAll(re)) if (m[0]) ms.push([m.index, m.index + m[0].length]); }
+                else { const m = text.match(re); if (m && m[0]) ms.push([m.index, m.index + m[0].length]); }
+                for (let j = ms.length - 1; j >= 0; j--) {
+                    const [s, e] = ms[j];
+                    const before = text.slice(0, s);
+                    const k = nl(text.slice(s, e));
+                    if (k) {
+                        const L = nl(before);
+                        const prefixBlank = before.slice(before.lastIndexOf('\n') + 1).trim() === '';
+                        const keep = prefixBlank && map[L + k] !== undefined ? map[L + k] : map[L];
+                        map.splice(L, k + 1, keep);
+                    }
+                    text = text.slice(0, s) + text.slice(e);
+                }
+            };
+            strip(RE_FRONTMATTER); strip(RE_DIRECTIVE); strip(RE_COMMENT); strip(/^\s+/);
+            return map;
+        }
+
+        function originalLine(raw, reported) {
+            const lead = raw.length - raw.trimStart().length;
+            const leadLines = lineCount(raw.slice(0, lead)) - 1;
+            const map = buildLineMap(raw.trim());
+            const idx = Math.min(Math.max(reported, 1), map.length) - 1;
+            return (map[idx] || reported) + leadLines;
+        }
+
+        /* ============================================================
+         * ジャーニー図チェック（mermaid がエラーにせず黙って誤描画するケースを警告）
+         * ============================================================ */
+        function visualWidth(s) {
+            let w = 0;
+            for (const ch of s) w += /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(ch) ? 2 : 1;
+            return w;
+        }
+
+        function lintJourney(src) {
+            const out = [];
+            const actors = new Set();
+            let started = false, inAccBlock = false, inFront = false;
+            src.split('\n').forEach((raw, i) => {
+                const line = i + 1, t = raw.trim();
+                if (i === 0 && t === '---') { inFront = true; return; }
+                if (inFront) { if (t === '---') inFront = false; return; }
+                if (!t || t.startsWith('%%')) return;
+                if (inAccBlock) { if (t.includes('}')) inAccBlock = false; return; }
+                if (!started) { if (/^journey\b/.test(t)) started = true; return; }
+                if (/^accDescr\s*\{/.test(t)) { if (!t.includes('}')) inAccBlock = true; return; }
+                if (/^(title|section|accTitle|accDescr)\b/.test(t)) return;
+                const c = t.indexOf(':');
+                if (c < 0) return;                      // 構文エラーは mermaid が報告する
+                const task = t.slice(0, c).trim();
+                const pieces = t.slice(c + 1).split(':');
+                if (pieces.length > 2) {
+                    out.push({ line, msg: `タスク名に半角「:」は使えません（「${task}」までがタスク名になります）。全角「：」に置き換えてください。` });
+                    return;
+                }
+                const sc = pieces[0].trim(), n = Number(sc);
+                if (sc === '' || !Number.isInteger(n) || n < 1 || n > 5) {
+                    out.push({ line, msg: `スコア「${sc || '（空）'}」は 1〜5 の整数で指定してください（5=満足 / 1=不満）。` });
+                }
+                if (pieces.length < 2 || !pieces[1].trim()) {
+                    out.push({ line, msg: '担当者（アクター）が未指定です。例: 「タスク: 5: ユーザー」' });
+                } else {
+                    pieces[1].split(',').map(a => a.trim()).filter(Boolean).forEach(a => actors.add(a));
+                }
+                const widest = Math.max(...task.split(/<br\s*\/?>/i).map(visualWidth));
+                if (widest > 20) out.push({ line, msg: 'タスク名が長く枠からはみ出します。<br> で改行できます。' });
+            });
+            if (actors.size > ACTOR_COLOURS.length) {
+                out.push({ line: 0, msg: `アクターが ${actors.size} 人います。${ACTOR_COLOURS.length} 人を超えると色が重複します。` });
+            }
+            return out;
+        }
+
+        function lint(src, type) {
+            const out = [];
+            if (src.length > MAX_TEXT) out.push({ line: 0, msg: `コードが長すぎます（${src.length.toLocaleString()} 文字 / 上限 ${MAX_TEXT.toLocaleString()}）。図を分割してください。` });
+            if (type === 'journey') out.push(...lintJourney(src));
+            return out;
         }
 
         /* ============================================================
@@ -782,19 +1047,19 @@
         }
 
         function contentSize() {
-            // viewport の中身（パディング込み）の実寸
             const r = output.getBoundingClientRect();
             return { w: r.width / scale, h: r.height / scale };
         }
 
         function fitView() {
-            if (!output.firstChild) return;
+            autoFit = true;
+            if (!hasDiagram) return;
             const { w, h } = contentSize();
             if (!w || !h) return;
             const pad = 32;
-            const aw = previewArea.clientWidth - pad * 2;
-            const ah = previewArea.clientHeight - pad * 2;
-            scale = Math.max(0.1, Math.min(aw / w, ah / h, 1.6));
+            const aw = Math.max(1, previewArea.clientWidth - pad * 2);
+            const ah = Math.max(1, previewArea.clientHeight - pad * 2);
+            scale = Math.max(0.05, Math.min(aw / w, ah / h, 1.6));
             const cw = w * scale, ch = h * scale;
             tx = Math.max(pad, (previewArea.clientWidth - cw) / 2);
             ty = Math.max(pad, (previewArea.clientHeight - ch) / 2);
@@ -802,28 +1067,30 @@
         }
 
         function zoomAt(factor, cx, cy) {
-            const newScale = Math.max(0.1, Math.min(8, scale * factor));
+            const newScale = Math.max(0.05, Math.min(8, scale * factor));
             const k = newScale / scale;
-            // ポインタ位置を固定点としてズーム
-            tx = cx - (cx - tx) * k;
+            tx = cx - (cx - tx) * k;   // ポインタ位置を固定点としてズーム
             ty = cy - (cy - ty) * k;
             scale = newScale;
+            autoFit = false;
             applyTransform();
         }
+        const zoomCenter = f => zoomAt(f, previewArea.clientWidth / 2, previewArea.clientHeight / 2);
 
-        // wheel zoom
+        // ホイール量に比例したズーム（トラックパッドのピンチ=ctrlKey付きで小刻みに来るため固定倍率だと暴走する）
         previewArea.addEventListener('wheel', e => {
-            if (!output.firstChild) return;
+            if (!hasDiagram) return;
             e.preventDefault();
+            const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+            const dy = Math.max(-300, Math.min(300, e.deltaY * unit));
             const rect = previewArea.getBoundingClientRect();
-            const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-            zoomAt(factor, e.clientX - rect.left, e.clientY - rect.top);
+            zoomAt(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX - rect.left, e.clientY - rect.top);
         }, { passive: false });
 
         // drag pan (pointer events: mouse + touch)
         let dragging = false, lastX = 0, lastY = 0, pointerId = null;
         previewArea.addEventListener('pointerdown', e => {
-            if (!output.firstChild) return;
+            if (!hasDiagram || e.button !== 0 || e.target.closest('.load-fail')) return;
             dragging = true; pointerId = e.pointerId;
             lastX = e.clientX; lastY = e.clientY;
             viewport.classList.add('grabbing');
@@ -831,7 +1098,9 @@
         });
         previewArea.addEventListener('pointermove', e => {
             if (!dragging || e.pointerId !== pointerId) return;
-            tx += e.clientX - lastX; ty += e.clientY - lastY;
+            const dx = e.clientX - lastX, dy = e.clientY - lastY;
+            if (!dx && !dy) return;
+            tx += dx; ty += dy; autoFit = false;
             lastX = e.clientX; lastY = e.clientY;
             applyTransform();
         });
@@ -843,36 +1112,161 @@
         previewArea.addEventListener('pointerup', endDrag);
         previewArea.addEventListener('pointercancel', endDrag);
 
-        $('zoomIn').onclick = () => zoomAt(1.2, previewArea.clientWidth / 2, previewArea.clientHeight / 2);
-        $('zoomOut').onclick = () => zoomAt(1 / 1.2, previewArea.clientWidth / 2, previewArea.clientHeight / 2);
+        $('zoomIn').onclick = () => zoomCenter(1.2);
+        $('zoomOut').onclick = () => zoomCenter(1 / 1.2);
         $('zoomFit').onclick = fitView;
+        zoomLevel.ondblclick = () => zoomCenter(1 / scale);
+
+        /* ============================================================
+         * Mermaid loader — 複数CDN（ヘッジ付き並行）+ タイムアウト + 再試行
+         * ============================================================ */
+        function withTimeout(promise, ms) {
+            let t;
+            return Promise.race([promise, new Promise((_, rej) => { t = setTimeout(() => rej(new Error('timeout')), ms); })])
+                .finally(() => clearTimeout(t));
+        }
+
+        function loadMermaid(attempt) {
+            // 失敗した import は URL 単位でキャッシュされるため、再試行時はクエリで URL を変える
+            const q = attempt ? `?retry=${attempt}` : '';
+            return new Promise(resolve => {
+                let next = 0, pending = 0, done = false, hedge;
+                const finish = m => { if (!done) { done = true; clearTimeout(hedge); resolve(m); } };
+                const start = () => {
+                    if (done || next >= CDN_SOURCES.length) return;
+                    const url = CDN_SOURCES[next++] + q;
+                    pending++;
+                    clearTimeout(hedge);
+                    hedge = setTimeout(start, CDN_HEDGE_MS);
+                    withTimeout(import(/* @vite-ignore */ url), CDN_TIMEOUT_MS).then(mod => {
+                        const m = mod && (mod.default || mod.mermaid);
+                        if (m && typeof m.render === 'function') return finish(m);
+                        throw new Error('invalid module');
+                    }).catch(e => {
+                        console.warn('[mermaid] CDN読込失敗:', url, e && e.message);
+                        pending--;
+                        if (next < CDN_SOURCES.length) start();
+                        else if (!pending) finish(null);
+                    });
+                };
+                start();
+            });
+        }
+
+        function effectiveDiagramTheme() {
+            return dtheme === 'auto' ? (theme === 'dark' ? 'dark' : 'default') : dtheme;
+        }
+
+        function mermaidConfig() {
+            const font = '-apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", Roboto, sans-serif';
+            return {
+                startOnLoad: false,
+                theme: effectiveDiagramTheme(),
+                securityLevel: 'strict',
+                logLevel: 'fatal',
+                // エラー時は例外のみ投げさせ、エラー図のDOM挿入を抑止（render の例外で構文検証を兼ねる）
+                suppressErrorRendering: true,
+                maxTextSize: MAX_TEXT,
+                maxEdges: MAX_EDGES,
+                fontFamily: font,
+                // journey を tspan 描画にすると、セクション名は枠と同じ fill、タスク名は白になり読めないため上書き
+                themeCSS: `text.task, text.journey-section { fill: ${effectiveDiagramTheme() === 'dark' ? '#e6e6e6' : '#1f2328'} !important; }`,
+                // htmlLabels:false → <foreignObject> ではなく <text> で描画され、PNG 化で canvas が汚染されない
+                htmlLabels: false,
+                // useMaxWidth:false → SVGに実寸の width/height が付く（パン/ズーム/PNG出力に必須）
+                flowchart: { useMaxWidth: false, htmlLabels: false, curve: 'basis' },
+                sequence: { useMaxWidth: false, wrap: true },
+                gantt: { useMaxWidth: false },
+                class: { useMaxWidth: false, htmlLabels: false },
+                state: { useMaxWidth: false },
+                er: { useMaxWidth: false },
+                // journey は既定で textPlacement:'fo'（foreignObject）のため PNG/画像コピーが失敗していた → tspan に
+                journey: { useMaxWidth: false, textPlacement: 'tspan', taskFontFamily: font, titleFontFamily: font, actorColours: ACTOR_COLOURS },
+                pie: { useMaxWidth: false },
+                quadrantChart: { useMaxWidth: false },
+                timeline: { useMaxWidth: false },
+                mindmap: { useMaxWidth: false },
+                gitGraph: { useMaxWidth: false },
+                requirement: { useMaxWidth: false },
+                xyChart: { useMaxWidth: false },
+                sankey: { useMaxWidth: false },
+                block: { useMaxWidth: false }
+            };
+        }
+
+        // 図の中で theme を指定している場合（frontmatter / %%{init}%%）も背景色を合わせる
+        function diagramIsDark(src) {
+            const m = /(?:^|\n)\s*theme\s*:\s*['"]?(\w+)|["']theme["']\s*:\s*["'](\w+)/.exec(src);
+            const t = m ? (m[1] || m[2]) : effectiveDiagramTheme();
+            return t === 'dark';
+        }
+
+        let loadAttempt = 0;
+        async function bootMermaid() {
+            setStatus('busy', 'ライブラリ読込中…');
+            loadFail.classList.remove('show');
+            const slow = setTimeout(() => setStatus('busy', '読込に時間がかかっています…'), 6000);
+            const m = await loadMermaid(loadAttempt++);
+            clearTimeout(slow);
+            if (!m) {
+                loadFail.classList.add('show');
+                setStatus('bad', 'ライブラリ読込失敗');
+                return;
+            }
+            mermaid = m;
+            mermaid.initialize(mermaidConfig());
+            render();
+        }
+        $('retryLoadBtn').onclick = bootMermaid;
 
         /* ============================================================
          * Render
          * ============================================================ */
-        let renderSeq = 0;
+        function setExportEnabled(on) {
+            svgBtn.disabled = pngBtn.disabled = !on;
+            copyImgBtn.disabled = !(on && navigator.clipboard && window.ClipboardItem);
+        }
+
+        function scheduleRender(ms) {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(render, ms);
+        }
 
         async function render() {
-            const src = code.value.trim();
+            clearTimeout(debounceTimer);
+            const raw = code.value;
+            const src = raw.trim();
+            const type = detectType(src);
             clearError();
+            showWarnings(src ? lint(raw, type) : []);
 
             if (!src) {
+                renderToken++;
                 output.innerHTML = '';
+                hasDiagram = false; autoFit = true;
+                output.classList.remove('stale'); staleBadge.classList.remove('show');
                 viewport.classList.remove('grabbable');
                 emptyState.classList.remove('hidden');
-                svgBtn.disabled = pngBtn.disabled = copyImgBtn.disabled = true;
+                spinner.classList.remove('show');
+                setExportEnabled(false);
                 setErrorLine(0);
-                setStatus('', '空');
+                if (mermaid) setStatus('', '空');
+                return;
+            }
+            if (!mermaid) return;   // 読込完了時に bootMermaid から再度呼ばれる
+            if (src.length > MAX_TEXT) {
+                renderToken++;
+                markFailed();
+                setStatus('bad', 'サイズ超過');
                 return;
             }
 
             const token = ++renderToken;
+            const id = 'mmd-' + Date.now() + '-' + (++renderSeq);
             spinner.classList.add('show');
 
             try {
-                // render 内部で構文解析されるため parse を別途呼ばない（二重パース回避）。
-                // suppressErrorRendering:true なので構文エラー時は例外のみでエラー図は挿入されない。
-                const id = 'mmd-' + Date.now() + '-' + (++renderSeq);
+                // render 内部で構文解析されるため parse を別途呼ばない（二重パース回避）
                 const { svg } = await mermaid.render(id, src);
                 if (token !== renderToken) return; // 競合した古い描画は破棄
 
@@ -886,33 +1280,50 @@
                 svgEl.removeAttribute('style');
                 svgEl.setAttribute('width', naturalW);
                 svgEl.setAttribute('height', naturalH);
+                output.style.setProperty('--diagram-bg', diagramIsDark(src) ? '#333333' : '#ffffff');
 
+                const first = !hasDiagram;
+                hasDiagram = true;
+                output.classList.remove('stale'); staleBadge.classList.remove('show');
                 emptyState.classList.add('hidden');
                 viewport.classList.add('grabbable');
-                fitView();
+                if (autoFit || first) fitView(); else applyTransform();
 
-                svgBtn.disabled = pngBtn.disabled = false;
-                copyImgBtn.disabled = !(navigator.clipboard && window.ClipboardItem);
+                setExportEnabled(true);
                 setErrorLine(0);
-                setStatus('ok', detectType(src) || 'OK');
+                if (!persistFailed) setStatus('ok', type || 'OK');
             } catch (e) {
                 if (token !== renderToken) return;
                 console.error('[render]', e);
-                const detail = (e && (e.str || e.message)) || '不明なエラー';
+                let detail = String((e && (e.str || e.message)) || e || '不明なエラー');
                 let line = e && e.hash && e.hash.loc && e.hash.loc.first_line;
                 if (!line) { const m = /line (\d+)/i.exec(detail); if (m) line = +m[1]; }
+                const isSyntax = !!line || /parse|syntax|lexical|expecting/i.test(detail);
+                if (line) {
+                    line = originalLine(raw, line);
+                    // mermaid の文言も前処理後の行番号なので、エディタの行番号に揃える
+                    detail = detail.replace(/(line )(\d+)/gi, (_, w, n) => w + originalLine(raw, +n));
+                }
                 setErrorLine(line || 0);
-                const isSyntax = !!line || /parse|syntax/i.test(detail);
-                showError((isSyntax ? '構文エラー:\n' : 'レンダリングエラー:\n') + detail);
+                let msg = (isSyntax ? '構文エラー' + (line ? `（${line}行目）` : '') + ':\n' : 'レンダリングエラー:\n') + detail;
+                if (e instanceof RangeError || /call stack|too much recursion/i.test(detail)) msg = 'レンダリングエラー:\n図が大きすぎて描画できませんでした。ノードや辺の数を減らすか、複数の図に分割してください。';
+                else if (/No diagram type detected/i.test(detail)) msg = '図の種類を判別できません。1行目を graph TD / sequenceDiagram / journey などの図種キーワードで始めてください。\n' + detail;
+                showError(msg);
+                markFailed();
                 setStatus('bad', isSyntax ? '構文エラー' + (line ? `（${line}行目）` : '') : 'エラー');
-                svgBtn.disabled = pngBtn.disabled = copyImgBtn.disabled = true;
             } finally {
-                // mermaid が body に残す一時要素を掃除
-                document.querySelectorAll('body > [id^="dmmd-"], body > [id^="mmd-"]').forEach(n => {
-                    if (n !== fatal) n.remove();
-                });
+                // mermaid が body に残す一時要素を掃除（自分の分だけ。待機中の次の描画の要素を消すと null 参照で失敗する）
+                for (const n of [document.getElementById('d' + id), document.getElementById(id)]) {
+                    if (n && n.parentNode === document.body) n.remove();
+                }
                 if (token === renderToken) spinner.classList.remove('show');
             }
+        }
+
+        // 失敗時は前回成功した図を薄く残す（ガタつき防止）。書き出しは最新と一致しないので無効化。
+        function markFailed() {
+            if (hasDiagram) { output.classList.add('stale'); staleBadge.classList.add('show'); }
+            setExportEnabled(false);
         }
 
         function measureSvg(svgEl) {
@@ -923,13 +1334,17 @@
                 try { const b = svgEl.getBBox(); w = b.width; h = b.height; } catch (_) {}
             }
             if (!w) { w = parseFloat(svgEl.getAttribute('width')) || 800; h = parseFloat(svgEl.getAttribute('height')) || 600; }
-            return { w: Math.ceil(w), h: Math.ceil(h) };
+            return { w: Math.max(1, Math.ceil(w)), h: Math.max(1, Math.ceil(h)) };
         }
 
         /* ============================================================
          * Export
          * ============================================================ */
-        function serializedSVG() {
+        const diagramBg = () => getComputedStyle(output).getPropertyValue('--diagram-bg').trim() || '#ffffff';
+
+        // forPng: <foreignObject>（HTMLラベル）を <text> に置換。
+        //  図内で htmlLabels:true を指定された場合などに canvas が汚染され PNG 化が失敗するのを防ぐ。
+        function serializedSVG(forPng) {
             const svg = output.querySelector('svg');
             if (!svg) return null;
             const clone = svg.cloneNode(true);
@@ -939,8 +1354,45 @@
             clone.setAttribute('width', naturalW);
             clone.setAttribute('height', naturalH);
             if (!clone.getAttribute('viewBox')) clone.setAttribute('viewBox', `0 0 ${naturalW} ${naturalH}`);
-            return '<?xml version="1.0" encoding="UTF-8"?>\n' +
-                   new XMLSerializer().serializeToString(clone);
+            const bg = diagramBg();
+            if (bg !== '#ffffff') {
+                // 暗い図は透明背景だと一般的なビューアで読めないため背景を敷く
+                const vb = clone.viewBox.baseVal;
+                const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                r.setAttribute('x', vb.x); r.setAttribute('y', vb.y);
+                r.setAttribute('width', vb.width); r.setAttribute('height', vb.height);
+                r.setAttribute('fill', bg);
+                const anchor = [...clone.children].find(c => c.tagName.toLowerCase() !== 'style' && c.tagName.toLowerCase() !== 'defs');
+                clone.insertBefore(r, anchor || null);
+            }
+            if (forPng) {
+                const live = svg.querySelectorAll('foreignObject');
+                clone.querySelectorAll('foreignObject').forEach((fo, i) => {
+                    const src = live[i];
+                    const lines = ((src && src.innerText) || fo.textContent || '').split('\n').map(s => s.trim()).filter(Boolean);
+                    const inner = src && (src.querySelector('span,div,p') || src);
+                    const cs = inner ? getComputedStyle(inner) : null;
+                    const fs = cs ? parseFloat(cs.fontSize) || 14 : 14;
+                    const x = parseFloat(fo.getAttribute('x')) || 0, y = parseFloat(fo.getAttribute('y')) || 0;
+                    const w = parseFloat(fo.getAttribute('width')) || 0, h = parseFloat(fo.getAttribute('height')) || 0;
+                    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    t.setAttribute('x', x + w / 2);
+                    t.setAttribute('text-anchor', 'middle');
+                    t.setAttribute('font-size', fs);
+                    if (cs) { t.setAttribute('fill', cs.color); t.setAttribute('font-family', cs.fontFamily); }
+                    const top = y + h / 2 - ((lines.length - 1) * fs * 1.2) / 2;
+                    lines.forEach((ln, j) => {
+                        const ts = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+                        ts.setAttribute('x', x + w / 2);
+                        ts.setAttribute('y', top + j * fs * 1.2);
+                        ts.setAttribute('dominant-baseline', 'central');
+                        ts.textContent = ln;
+                        t.appendChild(ts);
+                    });
+                    fo.replaceWith(t);
+                });
+            }
+            return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone);
         }
 
         function download(blob, name) {
@@ -951,34 +1403,42 @@
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
-        function tsName(ext) {
+        function safeName(s) {
+            return (s || 'mermaid').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/^[.\s]+|[.\s]+$/g, '').slice(0, 60) || 'mermaid';
+        }
+        function exportName(ext) {
             const d = new Date();
             const p = n => String(n).padStart(2, '0');
-            return `mermaid-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${ext}`;
+            const doc = currentDoc();
+            return `${safeName(doc && doc.name)}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.${ext}`;
         }
 
-        // SVG文字列 -> PNG Blob（白背景・高解像度）
+        // Canvas の上限（辺 ~16k px / iOS Safari は面積 16.7M px）を超えると無音で失敗するため縮小する
+        const MAX_DIM = 8192, MAX_AREA = 16777216;
+        function effectivePngScale(want) {
+            return Math.min(want, MAX_DIM / naturalW, MAX_DIM / naturalH, Math.sqrt(MAX_AREA / (naturalW * naturalH)));
+        }
+
+        // SVG -> PNG Blob（図の背景色・高解像度）
         function svgToPngBlob(scaleFactor) {
             return new Promise((resolve, reject) => {
-                const svgStr = serializedSVG();
+                const svgStr = serializedSVG(true);
                 if (!svgStr) return reject(new Error('図がありません'));
                 const url = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' }));
                 const img = new Image();
                 img.onload = () => {
                     try {
-                        // Canvas の実装上限（約16k px）を超えると無音で失敗するため、上限内に収める
-                        const MAX_DIM = 8192;
-                        const sf = Math.min(scaleFactor, MAX_DIM / naturalW, MAX_DIM / naturalH);
+                        const sf = effectivePngScale(scaleFactor);
                         const canvas = document.createElement('canvas');
                         canvas.width = Math.max(1, Math.round(naturalW * sf));
                         canvas.height = Math.max(1, Math.round(naturalH * sf));
                         const ctx = canvas.getContext('2d');
-                        ctx.fillStyle = theme === 'dark' ? '#1e1e1e' : '#ffffff';
+                        ctx.fillStyle = diagramBg();
                         ctx.fillRect(0, 0, canvas.width, canvas.height);
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                         canvas.toBlob(b => {
                             URL.revokeObjectURL(url);
-                            b ? resolve(b) : reject(new Error('PNG変換に失敗しました'));
+                            b ? resolve(b) : reject(new Error('PNG変換に失敗しました（図が大きすぎる可能性があります）'));
                         }, 'image/png');
                     } catch (err) { URL.revokeObjectURL(url); reject(err); }
                 };
@@ -988,48 +1448,106 @@
         }
 
         svgBtn.onclick = () => {
-            const s = serializedSVG();
+            const s = serializedSVG(false);
             if (!s) return toast('図がありません', true);
-            download(new Blob([s], { type: 'image/svg+xml;charset=utf-8' }), tsName('svg'));
+            download(new Blob([s], { type: 'image/svg+xml;charset=utf-8' }), exportName('svg'));
             toast('SVGを保存しました');
         };
 
         pngBtn.onclick = async () => {
+            pngBtn.disabled = true;
             try {
-                const sf = parseFloat($('scaleSelect').value) || 2;
-                const blob = await svgToPngBlob(sf);
-                download(blob, tsName('png'));
-                toast('PNGを保存しました');
+                const want = parseFloat($('scaleSelect').value) || 2;
+                const sf = effectivePngScale(want);
+                const blob = await svgToPngBlob(want);
+                download(blob, exportName('png'));
+                toast(sf < want - 0.01 ? `PNGを保存しました（サイズ上限のため ${sf.toFixed(1)}x に縮小）` : 'PNGを保存しました');
             } catch (e) { toast('PNG保存エラー: ' + e.message, true); }
+            finally { pngBtn.disabled = !hasDiagram || output.classList.contains('stale'); }
         };
 
         copyImgBtn.onclick = async () => {
             if (!(navigator.clipboard && window.ClipboardItem)) return toast('このブラウザは画像コピー非対応です', true);
             try {
-                const blob = await svgToPngBlob(2);
-                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                // Safari はユーザー操作中に write を呼ぶ必要があるため Promise を渡す形を優先
+                try {
+                    await navigator.clipboard.write([new ClipboardItem({ 'image/png': svgToPngBlob(2) })]);
+                } catch (e) {
+                    if (!(e instanceof TypeError)) throw e;
+                    await navigator.clipboard.write([new ClipboardItem({ 'image/png': await svgToPngBlob(2) })]);
+                }
                 toast('画像をコピーしました');
             } catch (e) { toast('コピー失敗: ' + e.message, true); }
         };
 
         /* ============================================================
          * Share via URL hash
+         *  新形式  #z=<base64url(deflate-raw(UTF-8))>   … 圧縮で旧形式より 1.3〜2 倍程度短い
+         *  旧形式  #code=<base64(UTF-8)>               … 読込のみ互換維持
          * ============================================================ */
-        function encodeShare(str) { return btoa(unescape(encodeURIComponent(str))); }
-        function decodeShare(b64) { return decodeURIComponent(escape(atob(b64))); }
+        const b64urlEncode = bytes => {
+            let s = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+            return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        };
+        const b64Decode = str => {
+            let s = str.replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+            while (s.length % 4) s += '=';
+            return Uint8Array.from(atob(s), c => c.charCodeAt(0));
+        };
+        async function pipe(bytes, stream) {
+            return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+        }
+        async function encodeShare(str) {
+            const bytes = new TextEncoder().encode(str);
+            if (typeof CompressionStream === 'function') return 'z=' + b64urlEncode(await pipe(bytes, new CompressionStream('deflate-raw')));
+            return 'code=' + b64urlEncode(bytes);
+        }
+        async function decodeShare(hash) {
+            const m = /^#(z|code)=(.+)$/s.exec(hash);
+            if (!m) return null;
+            let payload = m[2];
+            try { payload = decodeURIComponent(payload); } catch (_) {}   // チャット等で %2B などにされた場合
+            const bytes = b64Decode(payload);
+            const raw = m[1] === 'z' ? await pipe(bytes, new DecompressionStream('deflate-raw')) : bytes;
+            return new TextDecoder('utf-8', { fatal: true }).decode(raw);
+        }
 
         $('shareBtn').onclick = async () => {
             const src = code.value.trim();
             if (!src) return toast('共有するコードがありません', true);
-            const url = location.origin + location.pathname + '#code=' + encodeShare(src);
+            let frag;
+            try { frag = await encodeShare(src); } catch (e) { return toast('リンク作成に失敗しました: ' + e.message, true); }
+            const url = location.origin + location.pathname + location.search + '#' + frag;
+            const longNote = url.length > SHARE_WARN_LEN ? `（${url.length.toLocaleString()}文字: 一部のアプリでは切れる可能性があります）` : '';
             try {
                 await navigator.clipboard.writeText(url);
-                toast('共有リンクをコピーしました');
+                toast('共有リンクをコピーしました' + longNote);
             } catch (_) {
-                history.replaceState(null, '', '#code=' + encodeShare(src));
-                toast('URLを更新しました（アドレスバーを共有）');
+                history.replaceState(null, '', '#' + frag);
+                toast('URLを更新しました（アドレスバーを共有）' + longNote);
             }
         };
+
+        async function importFromHash() {
+            const h = location.hash;
+            if (!/^#(z|code)=/.test(h)) return false;
+            // 再読込時に重複追加しないようハッシュを除去
+            history.replaceState(null, '', location.pathname + location.search);
+            let shared;
+            try { shared = await decodeShare(h); } catch (e) { shared = null; }
+            if (!shared || !shared.trim()) { toast('共有リンクを読み込めませんでした（リンクが途中で切れている可能性があります）', true); return false; }
+            const same = docs.find(d => d.code.trim() === shared.trim());
+            if (same) {               // 同じ内容のドキュメントがあれば重複作成しない
+                if (same.id !== currentId) switchDoc(same.id);
+                toast(`共有された図は「${same.name}」として保存済みです`);
+                return true;
+            }
+            createDoc(uniqueName('共有図'), shared);
+            toast('共有された図を新しいドキュメントとして開きました');
+            return true;
+        }
+        window.addEventListener('hashchange', importFromHash);
 
         /* ============================================================
          * File import / export
@@ -1037,19 +1555,23 @@
         $('importBtn').onclick = () => $('fileInput').click();
         $('fileInput').onchange = e => {
             const file = e.target.files[0];
+            e.target.value = '';
             if (!file) return;
+            if (file.size > MAX_IMPORT_BYTES) return toast(`ファイルが大きすぎます（${(file.size / 1048576).toFixed(1)}MB / 上限 2MB）`, true);
             const reader = new FileReader();
             reader.onload = () => {
-                const name = file.name.replace(/\.(mmd|txt)$/i, '') || '読込';
-                createDoc(name, String(reader.result));   // 新規ドキュメントとして開く
+                let text = String(reader.result).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+                if (text.includes('\u0000') || /�{3,}/.test(text)) return toast('テキストファイルではないため読み込めません', true);
+                // Markdown 内の ```mermaid ブロックを取り出す
+                const md = /```mermaid[^\n]*\n([\s\S]*?)```/.exec(text);
+                if (md && /\.(md|markdown)$/i.test(file.name)) text = md[1];
+                const name = uniqueName(file.name.replace(/\.(mmd|mermaid|md|markdown|txt)$/i, '') || '読込');
+                createDoc(name, text);   // 新規ドキュメントとして開く
                 toast('読み込みました: ' + file.name);
             };
             reader.onerror = () => toast('ファイル読込に失敗しました', true);
             reader.readAsText(file);
-            e.target.value = '';
         };
-
-        function safeName(s) { return (s || 'mermaid').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60); }
 
         $('exportMmdBtn').onclick = () => {
             if (!code.value.trim()) return toast('保存するコードがありません', true);
@@ -1061,16 +1583,15 @@
         /* ============================================================
          * Toolbar actions
          * ============================================================ */
-        $('renderBtn').onclick = () => render();
+        $('renderBtn').onclick = () => { save(); render(); };
 
         docSelect.onchange = () => switchDoc(docSelect.value);
 
         $('newDocBtn').onclick = () => {
-            const base = '無題';
-            let n = docs.length + 1;
             const names = new Set(docs.map(d => d.name));
-            while (names.has(base + n)) n++;
-            createDoc(base + n, '', true);
+            let n = docs.length + 1;
+            while (names.has('無題' + n)) n++;
+            createDoc('無題' + n, '', true);
             toast('新規ドキュメントを作成しました');
         };
 
@@ -1078,8 +1599,9 @@
             const d = currentDoc();
             if (!d) return;
             const name = prompt('ドキュメント名', d.name);
-            if (name && name.trim()) {
+            if (name && name.trim() && name.trim() !== d.name) {
                 d.name = name.trim().slice(0, 60);
+                d.updated = Date.now();
                 persistDocs(); refreshDocSelect();
             }
         };
@@ -1088,12 +1610,25 @@
             const d = currentDoc();
             if (!d) return;
             if (!confirm(`ドキュメント「${d.name}」を削除しますか？`)) return;
+            save();
+            const idx = docs.indexOf(d);
             docs = docs.filter(x => x.id !== d.id);
-            if (!docs.length) docs.push({ id: uid(), name: '無題1', code: TEMPLATES.flowchart[1], updated: Date.now() });
-            currentId = docs[0].id;
+            tombstones[d.id] = Date.now();
+            if (!docs.length) docs.push({ id: uid(), name: '無題1', code: '', updated: Date.now() });
+            currentId = docs[Math.min(idx, docs.length - 1)].id;
             persistDocs();
-            loadCurrentIntoEditor();
-            toast('削除しました');
+            loadCurrentIntoEditor(true);
+            toast(`「${d.name}」を削除しました`, false, {
+                label: '元に戻す',
+                run: () => {
+                    delete tombstones[d.id];
+                    d.updated = Date.now();
+                    docs.splice(Math.min(idx, docs.length), 0, d);
+                    currentId = d.id;
+                    persistDocs();
+                    loadCurrentIntoEditor(true);
+                }
+            });
         };
 
         $('copyCodeBtn').onclick = async () => {
@@ -1102,7 +1637,7 @@
             catch (_) { code.select(); document.execCommand('copy'); toast('コードをコピーしました'); }
         };
 
-        // template select
+        // template select（置換は undo 可能な方法で行う）
         const sel = $('templateSelect');
         Object.entries(TEMPLATES).forEach(([k, [label]]) => {
             const o = document.createElement('option');
@@ -1110,14 +1645,13 @@
         });
         sel.onchange = () => {
             const k = sel.value;
+            sel.value = '';
             if (!k) return;
-            const insert = () => {
-                code.value = TEMPLATES[k][1];
-                save(); updateMeta(); render();
-                sel.value = '';
-            };
-            if (!code.value.trim() || confirm('現在のコードをテンプレートで置き換えますか？')) insert();
-            else sel.value = '';
+            if (code.value.trim() && !confirm('現在のコードをテンプレートで置き換えますか？（Ctrl/Cmd+Z で戻せます）')) return;
+            autoFit = true;
+            replaceRange(0, code.value.length, TEMPLATES[k][1]);
+            code.setSelectionRange(0, 0); code.scrollTop = 0;
+            render();
         };
 
         /* ============================================================
@@ -1126,46 +1660,120 @@
         function applyTheme() {
             document.documentElement.setAttribute('data-theme', theme);
             $('themeIco').textContent = theme === 'dark' ? '☀️' : '🌙';
+            dthemeSelect.value = dtheme;
+        }
+        function reinitMermaid() {
+            if (!mermaid) return;
+            mermaid.initialize(mermaidConfig());
+            if (code.value.trim()) render();
         }
         $('themeBtn').onclick = () => {
             theme = theme === 'dark' ? 'light' : 'dark';
-            localStorage.setItem(LS_THEME, theme);
-            applyTheme();
-            mermaid.initialize(mermaidConfig(theme));
-            if (code.value.trim()) render();
+            store.set(LS_THEME, theme);
+            applyTheme(); reinitMermaid();
         };
+        dthemeSelect.onchange = () => {
+            dtheme = dthemeSelect.value;
+            store.set(LS_DTHEME, dtheme);
+            reinitMermaid();
+        };
+        // 明示的に選択していなければ OS の設定変更に追従
+        if (window.matchMedia) {
+            matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+                if (store.get(LS_THEME)) return;
+                theme = systemTheme(); applyTheme(); reinitMermaid();
+            });
+        }
         applyTheme();
 
         /* ============================================================
          * Help
          * ============================================================ */
         const helpDlg = $('helpDlg');
-        $('helpBtn').onclick = () => {
-            const v = typeof mermaid.version === 'function' ? mermaid.version() : mermaid.version;
-            $('mmdVer').textContent = 'Mermaid v' + (v || MERMAID_VERSION);
-            helpDlg.showModal();
-        };
+        function openHelp() {
+            const v = mermaid && (typeof mermaid.version === 'function' ? mermaid.version() : mermaid.version);
+            $('mmdVer').textContent = 'Mermaid v' + (v || MERMAID_VERSION) + (store.available ? '' : ' ・ 保存領域が使えないため内容はこのタブを閉じると失われます');
+            if (!helpDlg.open) helpDlg.showModal();
+        }
+        $('helpBtn').onclick = openHelp;
         $('helpClose').onclick = () => helpDlg.close();
         helpDlg.addEventListener('click', e => { if (e.target === helpDlg) helpDlg.close(); }); // 背景クリックで閉じる
 
         /* ============================================================
-         * Editor events
+         * Editor editing commands（undo 履歴を壊さないよう execCommand を優先）
          * ============================================================ */
+        function replaceRange(start, end, text) {
+            code.focus();
+            code.setSelectionRange(start, end);
+            let ok = false;
+            try { ok = text ? document.execCommand('insertText', false, text) : document.execCommand('delete'); } catch (_) {}
+            if (!ok) {
+                code.setRangeText(text, start, end, 'end');
+                code.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+
+        // 選択範囲を含む行全体に変換を適用し、選択を維持する
+        function transformLines(fn) {
+            const v = code.value, s = code.selectionStart, e = code.selectionEnd;
+            const ls = v.lastIndexOf('\n', s - 1) + 1;
+            let le = v.indexOf('\n', e > s && v[e - 1] === '\n' ? e - 1 : e);
+            if (le === -1) le = v.length;
+            const before = v.slice(ls, le);
+            const lines = before.split('\n');
+            const after = fn(lines).join('\n');
+            if (after === before) return;
+            replaceRange(ls, le, after);
+            const firstDelta = after.split('\n')[0].length - lines[0].length;
+            code.setSelectionRange(Math.max(ls, s + firstDelta), Math.max(ls, e + (after.length - before.length)));
+        }
+
+        const INDENT = '    ';
+        let escPressed = false;   // Esc 直後の Tab はフォーカス移動（キーボードトラップ回避: WCAG 2.1.2）
+
         code.addEventListener('keydown', e => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); render(); }
+            const mod = e.ctrlKey || e.metaKey;
+            if (e.key === 'Escape') { escPressed = true; return; }
+            if (e.key === 'Tab' && escPressed) { escPressed = false; return; }
+            escPressed = false;
+            if (e.isComposing || e.keyCode === 229) return;   // IME 変換中は触らない
+
+            if (mod && e.key === 'Enter') { e.preventDefault(); save(); render(); return; }
+            if (mod && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault(); flush();
+                if (!persistFailed) toast(store.available ? '保存しました' : '保存領域が使えないため .mmd で書き出してください', !store.available);
+                return;
+            }
+            if (mod && e.key === '/') {
+                e.preventDefault();
+                transformLines(lines => {
+                    const body = lines.filter(l => l.trim());
+                    const allC = body.length && body.every(l => /^\s*%%/.test(l));
+                    return lines.map(l => !l.trim() ? l : allC ? l.replace(/^(\s*)%% ?/, '$1') : l.replace(/^(\s*)/, '$1%% '));
+                });
+                return;
+            }
             if (e.key === 'Tab') {
                 e.preventDefault();
                 const s = code.selectionStart, en = code.selectionEnd;
-                code.value = code.value.slice(0, s) + '    ' + code.value.slice(en);
-                code.selectionStart = code.selectionEnd = s + 4;
-                updateMeta();
+                const multi = code.value.slice(s, en).includes('\n');
+                if (e.shiftKey) transformLines(lines => lines.map(l => l.replace(/^( {1,4}|\t)/, '')));
+                else if (multi) transformLines(lines => lines.map(l => l ? INDENT + l : l));
+                else replaceRange(s, en, INDENT);
+                return;
+            }
+            if (e.key === 'Enter' && !mod && !e.shiftKey && !e.altKey) {
+                // 自動インデント（直前行の字下げを引き継ぐ）
+                const v = code.value, s = code.selectionStart;
+                const ls = v.lastIndexOf('\n', s - 1) + 1;
+                const indent = /^[ \t]*/.exec(v.slice(ls, s))[0];
+                if (indent) { e.preventDefault(); replaceRange(s, code.selectionEnd, '\n' + indent); }
             }
         });
 
         code.addEventListener('input', () => {
             save(); updateMeta();
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(render, 700);
+            scheduleRender(code.value.length > 20000 ? 1200 : 600);
         });
 
         // 行番号ガター／エラーバンドをスクロールに追従
@@ -1175,8 +1783,14 @@
         });
 
         document.addEventListener('keydown', e => {
-            if (e.shiftKey && (e.key === 'F' || e.key === 'f') && document.activeElement !== code) {
+            const tag = document.activeElement && document.activeElement.tagName;
+            const typing = tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT';
+            if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'F' || e.key === 'f') && !typing) {
                 e.preventDefault(); fitView();
+            } else if (e.key === 'F1') {
+                e.preventDefault(); openHelp();
+            } else if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S') && !typing) {
+                e.preventDefault(); flush(); toast('保存しました');
             }
         });
 
@@ -1184,70 +1798,76 @@
         let resizeTimer;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(() => { if (output.firstChild) fitView(); }, 150);
+            resizeTimer = setTimeout(() => { if (hasDiagram && autoFit) fitView(); updateErrBand(); }, 150);
         });
 
         /* ============================================================
-         * Resizable divider
+         * Resizable divider（ポインタ／キーボード、比率は保存）
          * ============================================================ */
         (() => {
             const divider = $('divider');
             const editor = document.querySelector('.editor-section');
             const main = document.querySelector('.main');
-            let active = false;
+            let active = false, fitQueued = false;
+            const setPct = (pct, persist) => {
+                pct = Math.max(25, Math.min(75, pct));
+                editor.style.flex = `0 0 ${pct}%`;
+                divider.setAttribute('aria-valuenow', Math.round(pct));
+                if (persist) store.set(LS_SPLIT, String(pct));
+                // fitView はフレームごとに1回に間引く
+                if (hasDiagram && autoFit && !fitQueued) {
+                    fitQueued = true;
+                    requestAnimationFrame(() => { fitQueued = false; fitView(); });
+                }
+            };
+            const saved = parseFloat(store.get(LS_SPLIT));
+            if (Number.isFinite(saved)) setPct(saved, false);
+            const curPct = () => parseFloat(divider.getAttribute('aria-valuenow')) || 46;
             divider.addEventListener('pointerdown', e => {
                 active = true; divider.classList.add('active');
                 divider.setPointerCapture(e.pointerId);
                 document.body.style.userSelect = 'none';
             });
-            let fitQueued = false;
             divider.addEventListener('pointermove', e => {
                 if (!active) return;
                 const rect = main.getBoundingClientRect();
-                let pct = ((e.clientX - rect.left) / rect.width) * 100;
-                pct = Math.max(25, Math.min(75, pct));
-                editor.style.flex = `0 0 ${pct}%`;
-                // fitView はフレームごとに1回に間引く（pointermove毎の再計算を回避）
-                if (output.firstChild && !fitQueued) {
-                    fitQueued = true;
-                    requestAnimationFrame(() => { fitQueued = false; fitView(); });
-                }
+                setPct(((e.clientX - rect.left) / rect.width) * 100, false);
             });
-            divider.addEventListener('pointerup', e => {
+            const end = e => {
+                if (!active) return;
                 active = false; divider.classList.remove('active');
                 document.body.style.userSelect = '';
+                store.set(LS_SPLIT, String(curPct()));
                 try { divider.releasePointerCapture(e.pointerId); } catch (_) {}
+            };
+            divider.addEventListener('pointerup', end);
+            divider.addEventListener('pointercancel', end);
+            divider.addEventListener('dblclick', () => setPct(46, true));
+            divider.addEventListener('keydown', e => {
+                const step = e.shiftKey ? 10 : 2;
+                if (e.key === 'ArrowLeft') { e.preventDefault(); setPct(curPct() - step, true); }
+                else if (e.key === 'ArrowRight') { e.preventDefault(); setPct(curPct() + step, true); }
+                else if (e.key === 'Home') { e.preventDefault(); setPct(25, true); }
+                else if (e.key === 'End') { e.preventDefault(); setPct(75, true); }
             });
         })();
 
         /* ============================================================
          * Init
          * ============================================================ */
-        (function init() {
+        (async function init() {
             loadDocs();
-
-            // 共有リンク(#code=...)があれば、新規ドキュメントとして取り込む
-            const m = location.hash.match(/#code=(.+)/);
-            if (m) {
-                try {
-                    const shared = decodeShare(m[1]);
-                    if (shared && shared.trim()) {
-                        const d = { id: uid(), name: '共有図', code: shared, updated: Date.now() };
-                        docs.push(d);
-                        currentId = d.id;
-                        persistDocs();
-                    }
-                } catch (_) {}
-                // 再読込時に重複追加しないようハッシュを除去
-                history.replaceState(null, '', location.pathname + location.search);
-            }
-
             code.value = currentDoc() ? currentDoc().code : '';
             refreshDocSelect();
             updateMeta();
-            setStatus('', '準備完了');
-            render();
+            render();   // 空表示・警告だけ先に反映（図は Mermaid 読込後）
+            if (!store.available) toast('ブラウザの保存領域が使えません（プライベートモード等）。タブを閉じると内容は失われます', true);
+            await importFromHash();   // 共有リンク(#z= / #code=)があれば新規ドキュメントとして取り込む
+            bootMermaid();
         })();
+
+        // テスト・デバッグ用の最小限のフック
+        window.__mmdEditor = { buildLineMap, originalLine, lintJourney, mergeDocs, sanitizeDocs, get docs() { return docs; } };
     </script>
 </body>
 </html>

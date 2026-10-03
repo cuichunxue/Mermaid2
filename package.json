@@ -1,0 +1,16 @@
+{
+  "name": "mermaid-editor",
+  "version": "2.0.0",
+  "private": true,
+  "description": "ブラウザだけで動く Mermaid 図エディタ（単一 HTML）",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "serve": "npx --yes http-server -c-1 -p 8080 ."
+  },
+  "devDependencies": {
+    "mermaid": "11.16.0",
+    "playwright": "1.56.1"
+  },
+  "engines": { "node": ">=20" }
+}
